@@ -5,11 +5,13 @@ import typing
 # import jax.ops
 import numpy as np
 
+SPLICED = 0
+UNSPLICED = 1
 
 class Simulator:
     # p 28 of paper
     noise_amplitude_q = 1.
-    decay_parameter_lambda = 0.8
+    decay_parameter_lambda = 0
 
     unspliced_noise_qu = 0.3
     spliced_noise_qs = 0.07
@@ -36,22 +38,7 @@ class Simulator:
         )
 
         self.repressives = self.adj < 0
-
-    def hill(self, state, half_responses):
-        """
-        So far, hill function was used in the code to model 1 interaction at a time.
-        So the inputs are single values instead of list or array. Also, it models repression based on this assumption.
-        if decided to make it work on multiple interaction, repression should be taken care as well.
-        """
-        # num = np.power(reg_conc.T, self.coop_state)
-        # denom = np.power(half_response.T, self.coop_state) + num
-        # response = np.true_divide(num, denom)
-
-        # is_active = reg_conc.astype(bool)
-        # response = jax.ops.index_update(response, jax.ops.index[:, repressive], 1 - response[:, repressive])
-        # # return response * is_active + repressive * (~is_active)
-        # return response + repressive * (~is_active).T
-        pass
+        self.adj = np.abs(self.adj)
 
     def _transition_fn(self, x0):
         unspliced, spliced = x0.T
@@ -63,7 +50,8 @@ class Simulator:
         denoms = np.power(half_response, self.coop_state) + nums
 
         saturation_factor = np.einsum("ijs,ijs->ijs", nums, 1 / denoms)  # TODO: This is 99.51% ones
-        saturation_factor[self.repressives] = 1 - saturation_factor[self.repressives]  # TODO: and this is 100 - 99.51 % zeros, turning off the negative contributions :(
+        saturation_factor[self.repressives] = 1 - saturation_factor[
+            self.repressives]  # TODO: and this is 100 - 99.51 % zeros, turning off the negative contributions :(
         effective_contributions = np.einsum("ijs,ijs->ijs", saturation_factor, self.adj)
         production_rate = effective_contributions.sum(axis=1) + self.bias
         assert (production_rate == production_rate).any()
@@ -73,23 +61,26 @@ class Simulator:
         # The paper, at page 28 says 0.8, but at page 26 is says zero, going with zero because that's close to the modeled formulas
         # lambda being zero makes spliced and unspliced decay rate equal for the old unspliced state contribution
         # lambda_ = 0
-        u_decay = self.unspliced_transcript_decay_rate_mu  # should have lambda_ for the unspliced state
+        u_decay = self.unspliced_transcript_decay_rate_mu
 
         alfa, beta, phi, omega = np.random.normal(size=(4, self.num_genes))
 
-        decayed_u = np.einsum(",ib -> ib", u_decay, unspliced)  # This would be different for each transition if lambda is not zero
+        decayed_u = np.einsum(",ib -> ib", u_decay,
+                              unspliced)  # This would be different for each transition if lambda is not zero
 
         amplitude_p = np.einsum("i, ib -> ib", alfa, np.power(production_rate, 0.5))
         amplitude_u = np.einsum("i, ib -> ib", beta, np.power(decayed_u, 0.5))
-        u1 = production_rate - decayed_u + self.unspliced_noise_qu * (amplitude_u + amplitude_p)
-        assert (u1 == u1).any()
+        u1 = ((production_rate - decayed_u) * self.dt + (self.unspliced_noise_qu * (amplitude_u + amplitude_p)) *
+              np.sqrt(self.dt))
 
+        assert (u1 == u1).any()
 
         gamma_s = np.einsum(", ib -> ib", self.spliced_transcript_decay_rate_gamma, unspliced)
         unsliced_noise_on_spliced = np.einsum("i, ib -> ib", phi, np.power(decayed_u, 0.5))
         spliced_noise_on_spliced = np.einsum("i, ib -> ib", omega, np.power(gamma_s, 0.5))
 
-        s1 = decayed_u - gamma_s + self.spliced_noise_qs * (unsliced_noise_on_spliced + spliced_noise_on_spliced)
+        s1 = ((decayed_u - gamma_s) * self.dt + (
+                    self.spliced_noise_qs * (unsliced_noise_on_spliced + spliced_noise_on_spliced)) * np.sqrt(self.dt))
         assert (s1 == s1).any()
         # TODO: The integration constant is assumed to be one but it should be self.dt
 
@@ -164,7 +155,7 @@ def load_grn(targets_file, regulator_file, bifurcations_file):
     with open(regulator_file, 'r') as f:
         for row in csv.reader(f, delimiter=','):
             node_id = int(float(row[0]))
-            regulator_strength = np.array(row[1:]).astype(np.float)
+            regulator_strength = np.array(row[1:]).astype(float)
             levels[0].append(node_id)
             bias[node_id] = regulator_strength
 
@@ -179,10 +170,14 @@ def main():
     bifurcation_matrix = "data/toy/two_cells_types_denoised_bifurcation.txt"
     adjacency, bias, levels = load_grn(input_file_targets, input_file_regs, bifurcation_matrix)
 
-    s = Simulator(adjacency, bias, levels)
+    sim = Simulator(adjacency, bias, levels)
     np.random.seed(714)
-    x0 = np.random.random((s.num_genes, s.num_bins, 2))  # 2 is for unspliced and spliced
-    xT = s.simulate(x0)
+    x0 = np.random.random((sim.num_genes, sim.num_bins, 2))  # 2 is for unspliced and spliced
+    # init genes
+    x0[sim.master_regulators, :, SPLICED] = sim.bias[sim.master_regulators] / sim.unspliced_transcript_decay_rate_mu #   g[bIdx].append_Conc(np.true_divide(rate, self.decayVector_[g[0].ID]))
+    x0[sim.master_regulators, :, UNSPLICED] = 4 * x0[sim.master_regulators, :, SPLICED]
+
+    xT = sim.simulate(x0)
 
 
 if __name__ == '__main__':
