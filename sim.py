@@ -1,0 +1,135 @@
+import csv
+from itertools import repeat
+
+import jax.numpy as jnp
+import networkx as nx
+import numpy as np
+
+
+class Sim:
+
+    def __init__(self, num_genes, num_cells_types, num_cells_to_simulate):
+        self.interactions_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Interaction_cID_4.txt'
+        self.regulators_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Regs_cID_4.txt'
+        self.num_genes = num_genes
+        self.num_cell_types = num_cells_types
+        self.num_cells_to_simulate = num_cells_to_simulate
+        self.adjacency = np.zeros(shape=(self.num_genes, self.num_genes))
+        self.decay_lambda = 0.8
+        self.mean_expression = -1 * np.ones((num_genes, num_cells_types))
+        self.sampling_state = 10
+        self.simulation_time_steps = self.sampling_state * self.num_cells_to_simulate
+        self.x = np.zeros(shape=(self.simulation_time_steps, num_genes, num_cells_types))
+        self.half_response = np.zeros(num_genes)
+        self.hill_coefficient = 2
+
+    def run(self):
+        self.adjacency, graph = self.load_grn()
+        layers = self.topo_sort_graph_layers(graph)
+        basal_production_rate = self.get_basal_production_rate()
+        self.simulate_expression(layers, basal_production_rate)
+
+    def load_grn(self):
+        topo_sort_graph = nx.DiGraph()
+
+        with open(self.interactions_filename, 'r') as f:
+            for row in csv.reader(f, delimiter=','):
+                target_node_id, num_regulators = int(float(row.pop(0))), int(float(row.pop(0)))
+                regulators_nodes_ids = [int(float(row.pop(0))) for x in range(num_regulators)]
+                contributions = [float(row.pop(0)) for x in range(num_regulators)]
+                coop_state = [float(row.pop(0)) for x in range(num_regulators)]  # TODO add it
+
+                self.adjacency[regulators_nodes_ids, target_node_id] = contributions
+
+                topo_sort_graph.add_weighted_edges_from(
+                    zip(regulators_nodes_ids, repeat(target_node_id), contributions)
+                )
+        return self.adjacency, topo_sort_graph
+
+    @staticmethod
+    def topo_sort_graph_layers(graph: nx.DiGraph):
+        layers = list(nx.topological_generations(graph))
+        return layers
+
+    def get_basal_production_rate(self):
+        """this is a user defined parameter. set to 0 but the master regulators
+        Example: regulator_id = g0 --> g1 --| g2, in three cell types: 0, 0.5, 1.5, 3
+        """
+        basal_production_rates = np.zeros((self.num_genes, self.num_cell_types))
+        with open(self.regulators_filename, 'r') as f:
+            for row in csv.reader(f, delimiter=','):
+                master_regulator_node_id = int(float(row.pop(0)))
+                b_for_cell_type = np.array(list(map(float, row)))
+                basal_production_rates[master_regulator_node_id] = b_for_cell_type
+
+        return basal_production_rates
+
+    def simulate_expression(self, layers, basal_production_rate):
+        for layer in layers[1:]:
+            self.calculate_half_response(layer)
+            self.init_concentration(layer, basal_production_rate)
+
+    def calculate_half_response(self, layer):
+        for gene in layer:
+            regulators = np.where(self.adjacency[:, gene] != 0)
+            if regulators:
+                mean_expression_per_cells_regulators_wise = self.mean_expression[regulators]
+                half_response = np.mean(mean_expression_per_cells_regulators_wise)
+                self.half_response[gene] = half_response
+
+    def init_concentration(self, layer: list, basal_production_rate):  # TODO missing basal_production_rate
+        """
+        Initializes the concentration of all genes in the input level
+        Note: calculate_half_response_ should be run before this method
+        """
+
+        x0 = np.zeros(shape=(self.num_genes, self.num_cell_types))
+
+        for gene in layer:
+            rate = 0
+            regulators = np.where(self.adjacency[:, gene] != 0)
+            mean_expression = self.mean_expression[regulators]
+            absolute_k = np.abs(self.adjacency[regulators][:, gene])
+            is_repressive = np.expand_dims(self.adjacency[regulators][:, gene] < 0, -1).repeat(self.num_cell_types,
+                                                                                               axis=-1)
+            half_response = self.half_response[gene]
+            hill_function = self.hill_function(mean_expression, half_response, is_repressive)
+            rate += np.einsum("r,rt->t", absolute_k, hill_function)
+
+            x0[gene] = rate / self.decay_lambda
+
+        self.x[0, layer] = x0[layer]
+
+    def hill_function(self, regulators_concentration, half_response, is_repressive):
+        rate = np.power(regulators_concentration, self.hill_coefficient) / (
+                    np.power(half_response, self.hill_coefficient) + np.power(regulators_concentration,
+                                                                              self.hill_coefficient))
+
+        rate[is_repressive] = 1 - rate[is_repressive]
+        return rate
+
+    def get_selected_concentrations_time_steps(self):
+        indices_ = np.random.randint(low=-self.simulation_time_steps, high=0, size=self.num_cells_to_simulate)
+        return indices_
+
+    def euler_maruyama(self, drift, diffusion, t_span, y0, num_points, key):  # TODO add it and fix it
+        delta_t = (t_span[1] - t_span[0]) / num_points
+        delta_W_α = jnp.sqrt(delta_t) * jax.random.normal(key, shape=(num_points,))
+        # split key
+        deltaW_β = jnp.sqrt(delta_t) * jax.random.normal(key, shape=(num_points,))
+
+        def hill(x, nonlinearity, half_coef):
+            kij * (jnp.power(x, nonlinearity) / (jnp.power(half_coef, nonlinearity) + jnp.power(x, nonlinearity)))
+
+        # @jax.jit
+        def step(carry, delta_w):
+            t, x = carry
+            x = x + (P - λ * x)
+            dt + q * jnp.sqrt(P) * delta_W_alpha + q * jnp.sqrt(lambd_a * x) * delta_W_beta
+            t = t + Δt
+            return (t, x), jnp.array((t, x))
+
+        return jax.lax.scan(step, (t_span[0], y0), noise)[1]
+
+
+sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=5).run()
