@@ -4,6 +4,7 @@ from itertools import repeat
 import jax.numpy as jnp
 import networkx as nx
 import numpy as np
+from copy import deepcopy
 
 
 class Sim:
@@ -27,7 +28,7 @@ class Sim:
         self.adjacency, graph = self.load_grn()
         layers = self.topo_sort_graph_layers(graph)
         basal_production_rate = self.get_basal_production_rate()
-        self.simulate_expression(layers, basal_production_rate)
+        self.simulate_expression_layer_wise(layers, basal_production_rate)
 
     def load_grn(self):
         topo_sort_graph = nx.DiGraph()
@@ -64,15 +65,39 @@ class Sim:
 
         return basal_production_rates
 
-    def simulate_expression(self, layers, basal_production_rate):
-        for layer in layers[1:]:
+    def simulate_expression_layer_wise(self, layers, basal_production_rate):
+        layers_copy = deepcopy(layers)
+        for layer in layers_copy:
             self.calculate_half_response(layer)
             self.init_concentration(layer, basal_production_rate)
+
+            step = 1
+            while layer:
+                for gene in layer:
+                    curr_gene_expression = self.x[step-1, gene]
+                    assert len(curr_gene_expression) == self.num_cell_types
+                    production_rate = 1  # TODO self.calculate_production_rate()
+                    decay = np.multiply(self.decay_lambda, curr_gene_expression)
+                    noise = 1
+                    dx = 0.01 * (production_rate - decay) + np.power(0.01, 0.5) * noise
+
+                    updated_concentration_gene = curr_gene_expression + dx
+                    self.x[step, gene] = updated_concentration_gene
+                    step += 1
+
+                    if step == self.simulation_time_steps:
+                        # converged = self.check_for_convergence()
+                        # print(f'Did it converged: {converged}')
+                        layer.remove(gene)
+                        step = 1
+
+            # TODO em
+            # TODO convergence
 
     def calculate_half_response(self, layer):
         for gene in layer:
             regulators = np.where(self.adjacency[:, gene] != 0)
-            if regulators:
+            if regulators:  # TODO this is wrong, how to check for empty np.where?
                 mean_expression_per_cells_regulators_wise = self.mean_expression[regulators]
                 half_response = np.mean(mean_expression_per_cells_regulators_wise)
                 self.half_response[gene] = half_response
@@ -108,6 +133,9 @@ class Sim:
         rate[is_repressive] = 1 - rate[is_repressive]
         return rate
 
+    def calculate_production_rate(self):
+        return
+
     def get_selected_concentrations_time_steps(self):
         indices_ = np.random.randint(low=-self.simulation_time_steps, high=0, size=self.num_cells_to_simulate)
         return indices_
@@ -125,11 +153,12 @@ class Sim:
         def step(carry, delta_w):
             t, x = carry
             x = x + (P - λ * x)
-            dt + q * jnp.sqrt(P) * delta_W_alpha + q * jnp.sqrt(lambd_a * x) * delta_W_beta
-            t = t + Δt
+            delta_t + q * jnp.sqrt(P) * delta_W_alpha + q * jnp.sqrt(_lambda * x) * delta_W_beta
+            t = t + delta_t
             return (t, x), jnp.array((t, x))
 
         return jax.lax.scan(step, (t_span[0], y0), noise)[1]
 
 
-sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=5).run()
+if __name__ == '__main__':
+    Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=5).run()
