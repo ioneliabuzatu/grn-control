@@ -19,14 +19,15 @@ class Sim:
         self.adjacency = np.zeros(shape=(self.num_genes, self.num_genes))
         self.decay_lambda = 0.8
         self.mean_expression = -1 * np.ones((num_genes, num_cells_types))
-        self.sampling_state = 10
+        self.sampling_state = 50
         self.simulation_time_steps = self.sampling_state * self.num_cells_to_simulate
+        print("sampling time steps: ", self.simulation_time_steps)
         self.x = np.zeros(shape=(self.simulation_time_steps, num_genes, num_cells_types))
         self.half_response = np.zeros(num_genes)
         self.hill_coefficient = 2
 
         self.p_value_for_convergence = 1e-3
-        self.window_len = 10
+        self.window_len = 100
 
     def run(self):
         self.adjacency, graph = self.load_grn()
@@ -71,7 +72,7 @@ class Sim:
 
     def simulate_expression_layer_wise(self, layers, basal_production_rate):
         layers_copy = deepcopy(layers)
-        for layer in layers_copy:
+        for num_layer, layer in enumerate(layers_copy):
             self.calculate_half_response(layer)
             self.init_concentration(layer, basal_production_rate)
 
@@ -79,8 +80,7 @@ class Sim:
             while layer:
                 for gene in layer:
                     curr_gene_expression = self.x[step - 1, gene]
-                    assert len(curr_gene_expression) == self.num_cell_types
-                    production_rate = 1  # TODO self.calculate_production_rate()
+                    production_rate = self.calculate_production_rate(gene, basal_production_rate)
                     decay = np.multiply(self.decay_lambda, curr_gene_expression)
                     noise = 1
                     dx = 0.01 * (production_rate - decay) + np.power(0.01, 0.5) * noise
@@ -90,15 +90,14 @@ class Sim:
                     step += 1
 
                     if step == self.simulation_time_steps:
-                        check_convergence = self.check_for_convergence(self.x[:, gene]) # TODO should be if check_converged == # :
-                        print(f'Did it converge? : {check_convergence}')
+                        check_convergence = self.check_for_convergence(self.x[:, gene]) # TODO should be 'if check_converged == #:'
+                        print(f'step: {step} | layer: {num_layer} | Did it converge? : {check_convergence}')
                         layer.remove(gene)
                         step = 1
                         # gObj.set_scExpression(self.scIndices_)
                         # self.meanExpression[gID, binID] = np.mean(gObj.scExpression)
 
             # TODO em
-            # TODO convergence
 
     def calculate_half_response(self, layer):
         for gene in layer:
@@ -117,7 +116,6 @@ class Sim:
         x0 = np.zeros(shape=(self.num_genes, self.num_cell_types))
 
         for gene in layer:
-            rate = 0
             regulators = np.where(self.adjacency[:, gene] != 0)
             mean_expression = self.mean_expression[regulators]
             absolute_k = np.abs(self.adjacency[regulators][:, gene])
@@ -125,7 +123,7 @@ class Sim:
                                                                                                axis=-1)
             half_response = self.half_response[gene]
             hill_function = self.hill_function(mean_expression, half_response, is_repressive)
-            rate += np.einsum("r,rt->t", absolute_k, hill_function)
+            rate = np.einsum("r,rt->t", absolute_k, hill_function)
 
             x0[gene] = rate / self.decay_lambda
 
@@ -161,8 +159,31 @@ class Sim:
 
         return converged
 
-    def calculate_production_rate(self):
-        return
+    def calculate_production_rate(self, gene, basal_production_rate):
+        gene_basal_production = basal_production_rate[gene]
+        if (basal_production_rate != 0).all():
+            return gene_basal_production
+        print()
+
+        regulators = np.where(self.adjacency[:, gene] != 0)
+        mean_expression = self.mean_expression[regulators]
+        absolute_k = np.abs(self.adjacency[regulators][:, gene])
+        is_repressive = np.expand_dims(self.adjacency[regulators][:, gene] < 0, -1).repeat(self.num_cell_types,
+                                                                                           axis=-1)
+        half_response = self.half_response[gene]
+        hill_function = self.hill_function(mean_expression, half_response, is_repressive)
+        rate = np.einsum("r,rt->t", absolute_k, hill_function)
+
+        # for tupleIdx, rIdx in enumerate(regIndices):
+        #     regGeneLevel = self.gID_to_level_and_idx[rIdx][0]
+        #     regGeneIdx = self.gID_to_level_and_idx[rIdx][1]
+        #     regGene_allBins = self.level2verts_[regGeneLevel][regGeneIdx]
+        #     for colIdx, bIdx in enumerate(binIndices):
+        #         hillMatrix[tupleIdx, colIdx] = self.hill_(regGene_allBins[bIdx].Conc[currStep], params[tupleIdx][3],
+        #                                                   params[tupleIdx][2], params[tupleIdx][1] < 0)
+        #
+        # return np.matmul(Ks, hillMatrix)
+        return rate
 
     def get_selected_concentrations_time_steps(self):
         indices_ = np.random.randint(low=-self.simulation_time_steps, high=0, size=self.num_cells_to_simulate)
