@@ -112,19 +112,10 @@ class Sim:
         Initializes the concentration of all genes in the input level
         Note: calculate_half_response_ should be run before this method
         """
-
         x0 = np.zeros(shape=(self.num_genes, self.num_cell_types))
 
         for gene in layer:
-            regulators = np.where(self.adjacency[:, gene] != 0)
-            mean_expression = self.mean_expression[regulators]
-            absolute_k = np.abs(self.adjacency[regulators][:, gene])
-            is_repressive = np.expand_dims(self.adjacency[regulators][:, gene] < 0, -1).repeat(self.num_cell_types,
-                                                                                               axis=-1)
-            half_response = self.half_response[gene]
-            hill_function = self.hill_function(mean_expression, half_response, is_repressive)
-            rate = np.einsum("r,rt->t", absolute_k, hill_function)
-
+            rate = self.calculate_production_rate(gene, basal_production_rate)
             x0[gene] = rate / self.decay_lambda
 
         self.x[0, layer] = x0[layer]
@@ -163,7 +154,6 @@ class Sim:
         gene_basal_production = basal_production_rate[gene]
         if (basal_production_rate != 0).all():
             return gene_basal_production
-        print()
 
         regulators = np.where(self.adjacency[:, gene] != 0)
         mean_expression = self.mean_expression[regulators]
@@ -174,15 +164,6 @@ class Sim:
         hill_function = self.hill_function(mean_expression, half_response, is_repressive)
         rate = np.einsum("r,rt->t", absolute_k, hill_function)
 
-        # for tupleIdx, rIdx in enumerate(regIndices):
-        #     regGeneLevel = self.gID_to_level_and_idx[rIdx][0]
-        #     regGeneIdx = self.gID_to_level_and_idx[rIdx][1]
-        #     regGene_allBins = self.level2verts_[regGeneLevel][regGeneIdx]
-        #     for colIdx, bIdx in enumerate(binIndices):
-        #         hillMatrix[tupleIdx, colIdx] = self.hill_(regGene_allBins[bIdx].Conc[currStep], params[tupleIdx][3],
-        #                                                   params[tupleIdx][2], params[tupleIdx][1] < 0)
-        #
-        # return np.matmul(Ks, hillMatrix)
         return rate
 
     def get_selected_concentrations_time_steps(self):
