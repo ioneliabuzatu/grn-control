@@ -1,6 +1,7 @@
 import csv
 from itertools import repeat
 
+import jax
 import jax.numpy as jnp
 import networkx as nx
 import numpy as np
@@ -10,8 +11,8 @@ from copy import deepcopy
 class Sim:
 
     def __init__(self, num_genes, num_cells_types, num_cells_to_simulate):
-        self.interactions_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Interaction_cID_4.txt'
-        self.regulators_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Regs_cID_4.txt'
+        self.interactions_filename = 'data/Sergio/De-noised_100G_9T_300cPerT_4_DS1/Interaction_cID_4.txt'
+        self.regulators_filename = 'data/Sergio/De-noised_100G_9T_300cPerT_4_DS1/Regs_cID_4.txt'
         self.num_genes = num_genes
         self.num_cell_types = num_cells_types
         self.num_cells_to_simulate = num_cells_to_simulate
@@ -27,6 +28,7 @@ class Sim:
     def run(self):
         self.adjacency, graph = self.load_grn()
         layers = self.topo_sort_graph_layers(graph)
+        # print(layers)
         basal_production_rate = self.get_basal_production_rate()
         self.simulate_expression_layer_wise(layers, basal_production_rate)
 
