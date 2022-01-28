@@ -1,10 +1,11 @@
 import csv
+from copy import deepcopy
 from itertools import repeat
 
 import jax.numpy as jnp
 import networkx as nx
 import numpy as np
-from copy import deepcopy
+from scipy.stats import ttest_ind
 
 
 class Sim:
@@ -23,6 +24,9 @@ class Sim:
         self.x = np.zeros(shape=(self.simulation_time_steps, num_genes, num_cells_types))
         self.half_response = np.zeros(num_genes)
         self.hill_coefficient = 2
+
+        self.p_value_for_convergence = 1e-3
+        self.window_len = 10
 
     def run(self):
         self.adjacency, graph = self.load_grn()
@@ -74,7 +78,7 @@ class Sim:
             step = 1
             while layer:
                 for gene in layer:
-                    curr_gene_expression = self.x[step-1, gene]
+                    curr_gene_expression = self.x[step - 1, gene]
                     assert len(curr_gene_expression) == self.num_cell_types
                     production_rate = 1  # TODO self.calculate_production_rate()
                     decay = np.multiply(self.decay_lambda, curr_gene_expression)
@@ -86,10 +90,12 @@ class Sim:
                     step += 1
 
                     if step == self.simulation_time_steps:
-                        # converged = self.check_for_convergence()
-                        # print(f'Did it converged: {converged}')
+                        check_convergence = self.check_for_convergence(self.x[:, gene]) # TODO should be if check_converged == # :
+                        print(f'Did it converge? : {check_convergence}')
                         layer.remove(gene)
                         step = 1
+                        # gObj.set_scExpression(self.scIndices_)
+                        # self.meanExpression[gID, binID] = np.mean(gObj.scExpression)
 
             # TODO em
             # TODO convergence
@@ -127,11 +133,33 @@ class Sim:
 
     def hill_function(self, regulators_concentration, half_response, is_repressive):
         rate = np.power(regulators_concentration, self.hill_coefficient) / (
-                    np.power(half_response, self.hill_coefficient) + np.power(regulators_concentration,
-                                                                              self.hill_coefficient))
+                np.power(half_response, self.hill_coefficient) + np.power(regulators_concentration,
+                                                                          self.hill_coefficient))
 
         rate[is_repressive] = 1 - rate[is_repressive]
         return rate
+
+    def check_for_convergence(self, gene_concentration, concentration_criteria='np_all_close'):
+        converged = False
+
+        if concentration_criteria == 't_test':
+            sample1 = gene_concentration[-2 * self.window_len:-1 * self.window_len]
+            sample2 = gene_concentration[-1 * self.window_len:]
+            _, p = ttest_ind(sample1, sample2)
+            if p >= self.p_value_for_convergence:
+                converged = True
+
+        elif concentration_criteria == 'mean':
+            abs_mean_gene = np.abs(np.mean(gene_concentration[-self.window_len:]))
+            if abs_mean_gene <= self.p_value_for_convergence:
+                converged = True
+
+        elif concentration_criteria == 'np_all_close':
+            converged = np.allclose(gene_concentration[-2 * self.window_len:-1 * self.window_len],
+                                    gene_concentration[-self.window_len:],
+                                    atol=self.p_value_for_convergence)
+
+        return converged
 
     def calculate_production_rate(self):
         return
