@@ -90,13 +90,13 @@ class Sim:
                     step += 1
 
                     if step == self.simulation_time_steps:
-                        check_convergence = self.check_for_convergence(self.x[:, gene]) # TODO should be 'if check_converged == #:'
+                        check_convergence = self.check_for_convergence(
+                            self.x[:, gene])  # TODO should be 'if check_converged == #:'
                         print(f'step: {step} | layer: {num_layer} | Did it converge? : {check_convergence}')
                         layer.remove(gene)
                         step = 1
-                        # gObj.set_scExpression(self.scIndices_)
-                        # self.meanExpression[gID, binID] = np.mean(gObj.scExpression)
-
+                        random_indices = self.get_selected_concentrations_time_steps()
+                        self.mean_expression[gene] = np.mean(self.x[random_indices], axis=(0, 1))
             # TODO em
 
     def calculate_half_response(self, layer):
@@ -167,8 +167,7 @@ class Sim:
         return rate
 
     def get_selected_concentrations_time_steps(self):
-        indices_ = np.random.randint(low=-self.simulation_time_steps, high=0, size=self.num_cells_to_simulate)
-        return indices_
+        return np.random.randint(low=-self.simulation_time_steps, high=0, size=self.num_cells_to_simulate)
 
     def euler_maruyama(self, drift, diffusion, t_span, y0, num_points, key):  # TODO add it and fix it
         delta_t = (t_span[1] - t_span[0]) / num_points
@@ -191,4 +190,5 @@ class Sim:
 
 
 if __name__ == '__main__':
-    Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=5).run()
+    sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=5)
+    sim.run()
