@@ -7,10 +7,13 @@ import networkx as nx
 import numpy as np
 from copy import deepcopy
 
+from jax.config import config
+config.update("jax_enable_x64", True)
+
 
 class Sim:
 
-    def __init__(self, num_genes, num_cells_types, num_cells_to_simulate):
+    def __init__(self, num_genes, num_cells_types, num_cells_to_simulate, **kwargs):
         self.interactions_filename = 'data/Sergio/De-noised_100G_9T_300cPerT_4_DS1/Interaction_cID_4.txt'
         self.regulators_filename = 'data/Sergio/De-noised_100G_9T_300cPerT_4_DS1/Regs_cID_4.txt'
         self.num_genes = num_genes
@@ -340,4 +343,5 @@ class Sim:
 
 if __name__ == '__main__':
     trajectories = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=5).run()  # return complete
+    print(trajectories)
     # trajectories for all genes across all cells
