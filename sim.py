@@ -10,7 +10,7 @@ from scipy.stats import ttest_ind
 
 class Sim:
 
-    def __init__(self, num_genes, num_cells_types, num_cells_to_simulate):
+    def __init__(self, num_genes, num_cells_types, num_cells_to_simulate, **kwargs):
         self.interactions_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Interaction_cID_4.txt'
         self.regulators_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Regs_cID_4.txt'
         self.num_genes = num_genes
@@ -92,7 +92,7 @@ class Sim:
                     if step == self.simulation_time_steps:
                         check_convergence = self.check_for_convergence(
                             self.x[:, gene])  # TODO should be 'if check_converged == #:'
-                        print(f'step: {step} | layer: {num_layer} | Did it converge? : {check_convergence}')
+                        # print(f'step: {step} | layer: {num_layer} | Did it converge? : {check_convergence}')
                         layer.remove(gene)
                         step = 1
                         random_indices = self.get_selected_concentrations_time_steps()
