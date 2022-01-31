@@ -50,7 +50,8 @@ class Sim:
         # TODO: half_response is dependent on previous layer mean_expression; move inside outer loop and remove
 
         # Initialize concentration of master regulators across all cells
-        init_concentration_dict = jax.vmap(self.init_master_reg_one_cell, in_axes=(1, None))(basal_production_rate, layers[0])
+        init_concentration_dict = jax.vmap(self.init_master_reg_one_cell, in_axes=(1, None))(basal_production_rate,
+                                                                                              layers[0])
         print(init_concentration_dict)
         # Then, initialize concentration of regulated genes layer per layer, across all genes
         init_mean_expression = {gene: jnp.mean(cell_concentration) for gene, cell_concentration
@@ -308,6 +309,7 @@ class Sim:
             next_x = current_x + (P - self.decay_lambda * current_x)*delta_t +\
                      noise_amplitude * jnp.sqrt(P) * delta_W_alfa +\
                      noise_amplitude * jnp.sqrt(self.decay_lambda * current_x) * delta_W_beta
+            next_x = jnp.clip(next_x, 0)
             return next_x, next_x
 
         all_state = W_alfa, W_beta
@@ -334,6 +336,7 @@ class Sim:
             next_x = current_x + (P - self.decay_lambda * current_x)*delta_t +\
                      noise_amplitude * jnp.sqrt(P) * delta_W_alfa +\
                      noise_amplitude * jnp.sqrt(self.decay_lambda * current_x) * delta_W_beta
+            next_x = jnp.clip(next_x, 0)
             return next_x, next_x
 
         all_state = reduced_regulators_concentration.T, W_alfa, W_beta
