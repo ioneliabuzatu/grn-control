@@ -74,12 +74,12 @@ class Sim:
     def simulate_expression_layer_wise(self, layers, basal_production_rate):
         layers_copy = deepcopy(layers)
         for num_layer, layer in enumerate(layers_copy):
-            if num_layer != 0: # not the master layer
+            if num_layer != 0 : # not the master layer
                 self.calculate_half_response(layer)
             self.init_concentration(layer, basal_production_rate)
 
             step = 1
-            while step < self.simulation_time_steps: # layer:
+            while step < self.simulation_time_steps:
                 for gene in layer:
                     curr_gene_expression = self.x[step - 1, gene]
                     production_rate = self.calculate_production_rate(gene, basal_production_rate)
@@ -96,18 +96,12 @@ class Sim:
                     updated_concentration_gene = curr_gene_expression + dx
                     self.x[step, gene] = updated_concentration_gene.clip(0) # clipping is important!
 
-                    # if step == self.simulation_time_steps-1:
-                    #     check_convergence = self.check_for_convergence(
-                    #         self.x[:, gene])  # TODO should be 'if check_converged == #:'
-                        # print(f'step: {step} | layer: {num_layer} | Did it converge? : {check_convergence}')
-                        # layer.remove(gene)
-                        # step = 1
-                        # random_indices = self.get_selected_concentrations_time_steps()
-                        # self.mean_expression[gene] = np.mean(self.x[random_indices], axis=(0, 1))
                 step += 1
 
-            random_indices = self.get_selected_concentrations_time_steps()
             self.mean_expression[layer] = np.mean(self.x[:, layer], axis=0)
+
+            # check_convergence = self.check_for_convergence(self.x[:, layer])  TODO: convergence layer-wise?
+            # print(f'step: {step} | layer: {num_layer} | Did it converge? : {check_convergence}')
 
     def calculate_half_response(self, layer):
         for gene in layer:
