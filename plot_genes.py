@@ -17,4 +17,4 @@ if __name__ == '__main__':
     for t, x_t in enumerate(trajectory):
         for gene_idx, g_t in enumerate(x_t):
             for cell_idx, c_t in enumerate(g_t):
-                writer.add_scalar(f"gene{gene_idx}/state{cell_idx}", c_t, t)
+                writer.add_scalar(f"gene{gene_idx}/type{cell_idx}", c_t, t)
