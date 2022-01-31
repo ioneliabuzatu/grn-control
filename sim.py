@@ -28,6 +28,7 @@ class Sim:
 
         self.p_value_for_convergence = 1e-3
         self.window_len = 100
+        self.noise_parameters_genes = np.ones(num_genes)
 
     def run(self):
         self.adjacency, graph = self.load_grn()
@@ -73,31 +74,40 @@ class Sim:
     def simulate_expression_layer_wise(self, layers, basal_production_rate):
         layers_copy = deepcopy(layers)
         for num_layer, layer in enumerate(layers_copy):
-            self.calculate_half_response(layer)
+            if num_layer != 0: # not the master layer
+                self.calculate_half_response(layer)
             self.init_concentration(layer, basal_production_rate)
 
             step = 1
-            while layer:
+            while step < self.simulation_time_steps: # layer:
                 for gene in layer:
                     curr_gene_expression = self.x[step - 1, gene]
                     production_rate = self.calculate_production_rate(gene, basal_production_rate)
                     decay = np.multiply(self.decay_lambda, curr_gene_expression)
-                    noise = 1
+
+                    dw_p = np.random.normal(size=len(curr_gene_expression))
+                    dw_d = np.random.normal(size=len(curr_gene_expression))
+                    amplitude_p = np.multiply(self.noise_parameters_genes[gene], np.power(production_rate, 0.5))
+                    amplitude_d = np.multiply(self.noise_parameters_genes[gene], np.power(decay, 0.5))
+                    noise = np.multiply(amplitude_p, dw_p) + np.multiply(amplitude_d, dw_d)
+
                     dx = 0.01 * (production_rate - decay) + np.power(0.01, 0.5) * noise
 
                     updated_concentration_gene = curr_gene_expression + dx
-                    self.x[step, gene] = updated_concentration_gene
-                    step += 1
+                    self.x[step, gene] = updated_concentration_gene.clip(0) # clipping is important!
 
-                    if step == self.simulation_time_steps:
-                        check_convergence = self.check_for_convergence(
-                            self.x[:, gene])  # TODO should be 'if check_converged == #:'
+                    # if step == self.simulation_time_steps-1:
+                    #     check_convergence = self.check_for_convergence(
+                    #         self.x[:, gene])  # TODO should be 'if check_converged == #:'
                         # print(f'step: {step} | layer: {num_layer} | Did it converge? : {check_convergence}')
-                        layer.remove(gene)
-                        step = 1
-                        random_indices = self.get_selected_concentrations_time_steps()
-                        self.mean_expression[gene] = np.mean(self.x[random_indices], axis=(0, 1))
-            # TODO em
+                        # layer.remove(gene)
+                        # step = 1
+                        # random_indices = self.get_selected_concentrations_time_steps()
+                        # self.mean_expression[gene] = np.mean(self.x[random_indices], axis=(0, 1))
+                step += 1
+
+            random_indices = self.get_selected_concentrations_time_steps()
+            self.mean_expression[layer] = np.mean(self.x[:, layer], axis=0)
 
     def calculate_half_response(self, layer):
         for gene in layer:
@@ -152,7 +162,7 @@ class Sim:
 
     def calculate_production_rate(self, gene, basal_production_rate):
         gene_basal_production = basal_production_rate[gene]
-        if (basal_production_rate != 0).all():
+        if (gene_basal_production != 0).all():
             return gene_basal_production
 
         regulators = np.where(self.adjacency[:, gene] != 0)
