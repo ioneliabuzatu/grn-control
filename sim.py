@@ -97,8 +97,9 @@ class Sim:
             mean_expression.update({gene: jnp.mean(cell_concentration) for gene, cell_concentration
                                     in complete_layer_trajectories.items()})  # Taking full average for now
 
-        print(complete_concentration_trajectories.keys())
-        print(complete_concentration_trajectories[45].shape)  # should be (9x100)
+        # print(complete_concentration_trajectories.keys())
+        # print(complete_concentration_trajectories[45].shape)  # should be (9x100)
+        print(complete_concentration_trajectories)
 
         # self.simulate_expression_layer_wise(layers, basal_production_rate)
 
@@ -233,9 +234,9 @@ class Sim:
     #     rate[is_repressive] = 1 - rate[is_repressive]
     #     return rate
 
-    @staticmethod
-    def reduce_ind_for_hill_fn(gene_adjacency, mean_expression_dict, concentration_dict):
-        """Helper fn for production rate rate calculation, modeled as hill fn.
+    # @staticmethod
+    def reduce_ind_for_hill_fn(self, gene_adjacency, mean_expression_dict, concentration_dict):
+        """Helper fn for production rate  calculation, modeled as hill fn.
         Filter out multiple 0 entries from adjacency graph. Done outside main function in order to scan
         the main function without redoing this step each time."""
 
@@ -252,15 +253,16 @@ class Sim:
         reduced_mean_expression = jnp.array([mean_expression_dict[i] for i in kept_indices])
         reduced_regulators_concentration = jnp.array([concentration_dict[i] for i in kept_indices])
 
-        return reduced_gene_adjacency, jnp.mean(reduced_mean_expression), reduced_regulators_concentration
+        return reduced_gene_adjacency, self.get_half_response(reduced_gene_adjacency, reduced_mean_expression),\
+            reduced_regulators_concentration
 
     def hill_functions_sum(self, reduced_gene_adjacency, reduced_half_response, reduced_regulators_concentration):
 
         common = jnp.power(reduced_regulators_concentration, self.hill_coefficient)
         rate = common / (jnp.power(reduced_half_response, self.hill_coefficient) + common)
 
-        activator_hill = reduced_gene_adjacency*rate
-        repressor_hill = reduced_gene_adjacency * (1-rate)
+        activator_hill = reduced_gene_adjacency*rate  # Will be zero where reduced_gene_adjacency is zero
+        repressor_hill = jnp.abs(reduced_gene_adjacency) * (1-rate)
 
         return jnp.sum(jnp.where(reduced_gene_adjacency >= 0, activator_hill, repressor_hill))
 
@@ -309,7 +311,7 @@ class Sim:
             next_x = current_x + (P - self.decay_lambda * current_x)*delta_t +\
                      noise_amplitude * jnp.sqrt(P) * delta_W_alfa +\
                      noise_amplitude * jnp.sqrt(self.decay_lambda * current_x) * delta_W_beta
-            next_x = jnp.clip(next_x, 0)
+            next_x = jnp.clip(next_x, a_min=0)
             return next_x, next_x
 
         all_state = W_alfa, W_beta
@@ -336,7 +338,7 @@ class Sim:
             next_x = current_x + (P - self.decay_lambda * current_x)*delta_t +\
                      noise_amplitude * jnp.sqrt(P) * delta_W_alfa +\
                      noise_amplitude * jnp.sqrt(self.decay_lambda * current_x) * delta_W_beta
-            next_x = jnp.clip(next_x, 0)
+            next_x = jnp.clip(next_x, a_min=0)
             return next_x, next_x
 
         all_state = reduced_regulators_concentration.T, W_alfa, W_beta
