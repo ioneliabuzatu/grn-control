@@ -29,7 +29,7 @@ class Sim:
         self.hill_coefficient = 2
         self.noise_amplitude = jnp.ones(self.num_genes)  # TODO: Redefine according to article
         self.t_span = (0, 1)
-        self.num_points = 100
+        self.num_points = 200
 
     def run(self):
         self.adjacency, graph = self.load_grn()
