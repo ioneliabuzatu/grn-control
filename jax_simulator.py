@@ -1,12 +1,11 @@
-import csv
-from itertools import repeat
+"""Jax version of SERGIO steady-state simulator"""
 
 import jax
 import jax.numpy as jnp
-import networkx as nx
 import numpy as np
-from copy import deepcopy
 from functools import partial
+
+from load_utils import load_grn, topo_sort_graph_layers, get_basal_production_rate
 
 
 class Sim:
@@ -20,9 +19,9 @@ class Sim:
         self.adjacency = np.zeros(shape=(self.num_genes, self.num_genes))
         self.decay_lambda = 0.8
         self.mean_expression = -1 * jnp.ones((num_genes, num_cells_types))
-        self.sampling_state = 10
-        self.simulation_time_steps = self.sampling_state * self.num_cells_to_simulate
-        self.x = np.zeros(shape=(self.simulation_time_steps, num_genes, num_cells_types))
+        # self.sampling_state = 10
+        # self.simulation_time_steps = self.sampling_state * self.num_cells_to_simulate
+        # self.x = np.zeros(shape=(self.simulation_time_steps, num_genes, num_cells_types))
         self.half_response = np.zeros(num_genes)
         self.hill_coefficient = 2
         self.noise_amplitude = jnp.ones(self.num_genes)  # TODO: Redefine according to article
@@ -30,9 +29,11 @@ class Sim:
         self.num_points = 200
 
     def run(self):
-        self.adjacency, graph = self.load_grn()
-        layers = self.topo_sort_graph_layers(graph)
-        basal_production_rate = self.get_basal_production_rate()  # TODO: Move to initialization?
+        self.adjacency, graph = load_grn(self.interactions_filename, self.adjacency)
+        self.adjacency = jnp.array(self.adjacency)
+        layers = topo_sort_graph_layers(graph)
+        basal_production_rate = jnp.array(get_basal_production_rate(self.regulators_filename, self.num_genes,
+                                                                    self.num_cell_types))
         # Note: basal rate is zero for non-master regulator genes
 
         # Initialize concentration of master regulators across all cells
@@ -78,109 +79,12 @@ class Sim:
             mean_expression.update({gene: jnp.mean(cell_concentration) for gene, cell_concentration
                                     in complete_layer_trajectories.items()})  # Taking full average for now
 
-        # self.simulate_expression_layer_wise(layers, basal_production_rate)
-
         return complete_concentration_trajectories
-
-    def load_grn(self):
-        topo_sort_graph = nx.DiGraph()
-
-        with open(self.interactions_filename, 'r') as f:
-            for row in csv.reader(f, delimiter=','):
-                target_node_id, num_regulators = int(float(row.pop(0))), int(float(row.pop(0)))
-                regulators_nodes_ids = [int(float(row.pop(0))) for x in range(num_regulators)]
-                contributions = [float(row.pop(0)) for x in range(num_regulators)]
-                coop_state = [float(row.pop(0)) for x in range(num_regulators)]  # TODO add it
-
-                self.adjacency[regulators_nodes_ids, target_node_id] = contributions
-
-                topo_sort_graph.add_weighted_edges_from(
-                    zip(regulators_nodes_ids, repeat(target_node_id), contributions)
-                )
-        return jnp.array(self.adjacency), topo_sort_graph
-
-    @staticmethod
-    def topo_sort_graph_layers(graph: nx.DiGraph):
-        layers = list(nx.topological_generations(graph))
-        return layers
-
-    def get_basal_production_rate(self):
-        """this is a user defined parameter. set to 0 but the master regulators
-        Example: regulator_id = g0 --> g1 --| g2, in three cell types: 0, 0.5, 1.5, 3
-        """
-        basal_production_rates = np.zeros((self.num_genes, self.num_cell_types))
-        with open(self.regulators_filename, 'r') as f:
-            for row in csv.reader(f, delimiter=','):
-                master_regulator_node_id = int(float(row.pop(0)))
-                b_for_cell_type = np.array(list(map(float, row)))
-                basal_production_rates[master_regulator_node_id] = b_for_cell_type
-
-        return jnp.array(basal_production_rates)
-
-    # def simulate_expression_layer_wise(self, layers, basal_production_rate):
-    #     layers_copy = deepcopy(layers)
-    #     for layer in layers_copy:
-    #         self.calculate_half_response(layer)
-    #         self.init_concentration(layer, basal_production_rate)
-    #
-    #         step = 1
-    #         while layer:
-    #             for gene in layer:
-    #                 curr_gene_expression = self.x[step-1, gene]
-    #                 assert len(curr_gene_expression) == self.num_cell_types
-    #                 production_rate = 1  # TODO self.calculate_production_rate()
-    #                 decay = np.multiply(self.decay_lambda, curr_gene_expression)
-    #                 noise = 1
-    #                 dx = 0.01 * (production_rate - decay) + np.power(0.01, 0.5) * noise
-    #
-    #                 updated_concentration_gene = curr_gene_expression + dx
-    #                 self.x[step, gene] = updated_concentration_gene
-    #                 step += 1
-    #
-    #                 if step == self.simulation_time_steps:
-    #                     # converged = self.check_for_convergence()
-    #                     # print(f'Did it converged: {converged}')
-    #                     layer.remove(gene)
-    #                     step = 1
-    #
-    #         # TODO em
-    #         # TODO convergence
-
-    # def calculate_half_response(self, layer):
-    #     for gene in layer:
-    #         regulators = np.where(self.adjacency[:, gene] != 0)
-    #         if regulators:  # TODO this is wrong, how to check for empty np.where?
-    #             mean_expression_per_cells_regulators_wise = self.mean_expression[regulators]
-    #             half_response = np.mean(mean_expression_per_cells_regulators_wise)
-    #             self.half_response[gene] = half_response
 
     # @staticmethod
     # def get_half_response(gene_adjacency, cell_mean_expression):
     #     regulators = (gene_adjacency != 0).astype(int)
     #     return jnp.mean(regulators*cell_mean_expression)
-
-    # def init_concentration(self, layer: list, basal_production_rate):  # TODO missing basal_production_rate
-    #     """
-    #     Initializes the concentration of all genes in the input level
-    #     Note: calculate_half_response_ should be run before this method
-    #     """
-    #
-    #     x0 = np.zeros(shape=(self.num_genes, self.num_cell_types))
-    #
-    #     for gene in layer:
-    #         rate = 0
-    #         regulators = np.where(self.adjacency[:, gene] != 0)
-    #         mean_expression = self.mean_expression[regulators]
-    #         absolute_k = np.abs(self.adjacency[regulators][:, gene])
-    #         is_repressive = np.expand_dims(self.adjacency[regulators][:, gene] < 0, -1).repeat(self.num_cell_types,
-    #                                                                                            axis=-1)
-    #         half_response = self.half_response[gene]
-    #         hill_function = self.hill_function(mean_expression, half_response, is_repressive)
-    #         rate += np.einsum("r,rt->t", absolute_k, hill_function)
-    #
-    #         x0[gene] = rate / self.decay_lambda
-    #
-    #     self.x[0, layer] = x0[layer]
 
     @partial(jax.jit, static_argnums=(0,))
     def init_master_reg_one_cell(self, cell_basal_rates, first_layer):
@@ -206,14 +110,6 @@ class Sim:
             self.reduce_ind_for_hill_fn(gene_adjacency, init_mean_expression, concentration_dict)
         return self.hill_functions_sum(reduced_gene_adjacency, half_response, reduced_regulators_concentration
                                        )/self.decay_lambda
-
-    # def hill_function(self, regulators_concentration, half_response, is_repressive):
-    #     rate = np.power(regulators_concentration, self.hill_coefficient) / (
-    #                 np.power(half_response, self.hill_coefficient) + np.power(regulators_concentration,
-    #                                                                           self.hill_coefficient))
-    #
-    #     rate[is_repressive] = 1 - rate[is_repressive]
-    #     return rate
 
     @staticmethod
     def reduce_ind_for_hill_fn(gene_adjacency, mean_expression_dict, concentration_dict):
@@ -247,13 +143,6 @@ class Sim:
         repressor_hill = jnp.abs(reduced_gene_adjacency) * (1-rate)
 
         return jnp.sum(jnp.where(reduced_gene_adjacency >= 0, activator_hill, repressor_hill))
-
-    # def calculate_production_rate(self):
-    #     return
-    #
-    # def get_selected_concentrations_time_steps(self):
-    #     indices_ = np.random.randint(low=-self.simulation_time_steps, high=0, size=self.num_cells_to_simulate)
-    #     return indices_
 
     def simulate_single_cell_master_layer(self, basal_rate, noise_amplitude, init_concentration, layer, key):
         """Simulation process for a master regulator, for which production rate only depends on basal rate"""
@@ -337,5 +226,4 @@ class Sim:
 
 if __name__ == '__main__':
     trajectories = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=5).run()  # return complete
-    print(trajectories)
-    # trajectories for all genes across all cells
+    print(trajectories)  # trajectories for all genes across all cells

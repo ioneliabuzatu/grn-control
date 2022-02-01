@@ -1,7 +1,8 @@
 import experiment_buddy
 import numpy as np
 
-import sim
+import jax_simulator
+import numpy_simulator
 
 params = {'num_genes': 100, 'num_cells_types': 9, 'num_cells_to_simulate': 5}
 
@@ -10,7 +11,8 @@ if __name__ == '__main__':
     experiment_buddy.register_defaults(params)
     writer = experiment_buddy.deploy()
 
-    simulator = sim.Sim(**params)
+    simulator = jax_simulator.Sim(**params)
+    # simulator = numpy_simulator.Sim(**params)
     simulator.interactions_filename = 'data/Interaction_cID_4.txt'
     simulator.regulators_filename = 'data/Regs_cID_4.txt'
 
