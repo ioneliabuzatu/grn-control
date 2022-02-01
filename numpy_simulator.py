@@ -7,6 +7,8 @@ import networkx as nx
 import numpy as np
 from scipy.stats import ttest_ind
 
+from load_utils import load_grn, topo_sort_graph_layers, get_basal_production_rate
+
 
 class Sim:
 
@@ -31,45 +33,10 @@ class Sim:
         self.noise_parameters_genes = np.ones(num_genes)
 
     def run(self):
-        self.adjacency, graph = self.load_grn()
-        layers = self.topo_sort_graph_layers(graph)
-        basal_production_rate = self.get_basal_production_rate()
+        self.adjacency, graph = load_grn(self.interactions_filename, self.adjacency)
+        layers = topo_sort_graph_layers(graph)
+        basal_production_rate = get_basal_production_rate(self.regulators_filename, self.num_genes, self.num_cell_types)
         self.simulate_expression_layer_wise(layers, basal_production_rate)
-
-    def load_grn(self):
-        topo_sort_graph = nx.DiGraph()
-
-        with open(self.interactions_filename, 'r') as f:
-            for row in csv.reader(f, delimiter=','):
-                target_node_id, num_regulators = int(float(row.pop(0))), int(float(row.pop(0)))
-                regulators_nodes_ids = [int(float(row.pop(0))) for x in range(num_regulators)]
-                contributions = [float(row.pop(0)) for x in range(num_regulators)]
-                coop_state = [float(row.pop(0)) for x in range(num_regulators)]  # TODO add it
-
-                self.adjacency[regulators_nodes_ids, target_node_id] = contributions
-
-                topo_sort_graph.add_weighted_edges_from(
-                    zip(regulators_nodes_ids, repeat(target_node_id), contributions)
-                )
-        return self.adjacency, topo_sort_graph
-
-    @staticmethod
-    def topo_sort_graph_layers(graph: nx.DiGraph):
-        layers = list(nx.topological_generations(graph))
-        return layers
-
-    def get_basal_production_rate(self):
-        """this is a user defined parameter. set to 0 but the master regulators
-        Example: regulator_id = g0 --> g1 --| g2, in three cell types: 0, 0.5, 1.5, 3
-        """
-        basal_production_rates = np.zeros((self.num_genes, self.num_cell_types))
-        with open(self.regulators_filename, 'r') as f:
-            for row in csv.reader(f, delimiter=','):
-                master_regulator_node_id = int(float(row.pop(0)))
-                b_for_cell_type = np.array(list(map(float, row)))
-                basal_production_rates[master_regulator_node_id] = b_for_cell_type
-
-        return basal_production_rates
 
     def simulate_expression_layer_wise(self, layers, basal_production_rate):
         layers_copy = deepcopy(layers)
