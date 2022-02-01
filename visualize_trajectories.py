@@ -1,4 +1,5 @@
 import experiment_buddy
+import numpy as np
 
 import sim
 
@@ -13,21 +14,26 @@ if __name__ == '__main__':
     simulator.interactions_filename = 'data/Interaction_cID_4.txt'
     simulator.regulators_filename = 'data/Regs_cID_4.txt'
 
-    if main:
-        simulator.run()
-        trajectory = simulator.x
-
+    def plot(trajectory):
         for t, x_t in enumerate(trajectory):
             for gene_idx, g_t in enumerate(x_t):
                 for cell_idx, c_t in enumerate(g_t):
                     writer.add_scalar(f"gene{gene_idx}/type{cell_idx}", c_t, t)
 
 
+    if main:
+        simulator.run()
+        trajectory = simulator.x
+        plot(trajectory)
     else:
         trajectory = simulator.run()
-        for t, x_t in trajectory.items():
-            x_T = x_t.T
-            for gene_idx, g_t in enumerate(x_t):
-                for cell_idx, c_t in enumerate(g_t):
-                    writer.add_scalar(f"gene{gene_idx}/type{cell_idx}", c_t, t)
+        keys, values = zip(*trajectory.items())
+        num_cells_types, time_steps, num_genes = *values[0].shape, len(keys)
+        concentrations = np.zeros(shape=(time_steps, num_genes, num_cells_types))
 
+        for gene_idx, x_t in enumerate(values):
+            x_t = x_t.T
+            gene = keys[gene_idx]
+            concentrations[:, gene, :] = x_t
+
+        plot(concentrations)
