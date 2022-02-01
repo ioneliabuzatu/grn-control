@@ -8,9 +8,6 @@ import numpy as np
 from copy import deepcopy
 from functools import partial
 
-from jax.config import config
-config.update("jax_enable_x64", True)  # TODO: is it necessary or was just for nans investigation?
-
 
 class Sim:
 
