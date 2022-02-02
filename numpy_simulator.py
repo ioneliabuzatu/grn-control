@@ -41,29 +41,16 @@ class Sim:
     def simulate_expression_layer_wise(self, layers, basal_production_rate):
         layers_copy = deepcopy(layers)
         for num_layer, layer in enumerate(layers_copy):
-            if num_layer != 0 : # not the master layer
+            if num_layer != 0:  # not the master layer
                 self.calculate_half_response(layer)
             self.init_concentration(layer, basal_production_rate)
 
-            step = 1
-            while step < self.simulation_time_steps:
-                for gene in layer:
-                    curr_gene_expression = self.x[step - 1, gene]
-                    production_rate = self.calculate_production_rate(gene, basal_production_rate)
-                    decay = np.multiply(self.decay_lambda, curr_gene_expression)
+            for step in range(1, self.simulation_time_steps):
+                curr_genes_expression = self.x[step-1, layer]
+                dx = self.euler_maruyama(basal_production_rate, curr_genes_expression, layer)
 
-                    dw_p = np.random.normal(size=len(curr_gene_expression))
-                    dw_d = np.random.normal(size=len(curr_gene_expression))
-                    amplitude_p = np.multiply(self.noise_parameters_genes[gene], np.power(production_rate, 0.5))
-                    amplitude_d = np.multiply(self.noise_parameters_genes[gene], np.power(decay, 0.5))
-                    noise = np.multiply(amplitude_p, dw_p) + np.multiply(amplitude_d, dw_d)
-
-                    dx = 0.01 * (production_rate - decay) + np.power(0.01, 0.5) * noise
-
-                    updated_concentration_gene = curr_gene_expression + dx
-                    self.x[step, gene] = updated_concentration_gene.clip(0) # clipping is important!
-
-                step += 1
+                updated_concentration_gene = curr_genes_expression + dx
+                self.x[step, layer] = updated_concentration_gene.clip(0)  # clipping is important!
 
             self.mean_expression[layer] = np.mean(self.x[:, layer], axis=0)
 
@@ -78,18 +65,10 @@ class Sim:
                 half_response = np.mean(mean_expression_per_cells_regulators_wise)
                 self.half_response[gene] = half_response
 
-    def init_concentration(self, layer: list, basal_production_rate):  # TODO missing basal_production_rate
-        """
-        Initializes the concentration of all genes in the input level
-        Note: calculate_half_response_ should be run before this method
-        """
-        x0 = np.zeros(shape=(self.num_genes, self.num_cell_types))
-
-        for gene in layer:
-            rate = self.calculate_production_rate(gene, basal_production_rate)
-            x0[gene] = rate / self.decay_lambda
-
-        self.x[0, layer] = x0[layer]
+    def init_concentration(self, layer: list, basal_production_rate):
+        """ Init concentration genes; Note: calculate_half_response should be run before this method """
+        rates = np.array([self.calculate_production_rate(gene, basal_production_rate) for gene in layer])
+        self.x[0, layer] = rates / self.decay_lambda
 
     def hill_function(self, regulators_concentration, half_response, is_repressive):
         rate = np.power(regulators_concentration, self.hill_coefficient) / (
@@ -98,6 +77,17 @@ class Sim:
 
         rate[is_repressive] = 1 - rate[is_repressive]
         return rate
+
+    def euler_maruyama(self, basal_production_rate, curr_genes_expression, layer):
+        production_rates = [self.calculate_production_rate(gene, basal_production_rate) for gene in layer]
+        decays = np.multiply(self.decay_lambda, curr_genes_expression)
+        dw_p = np.random.normal(size=curr_genes_expression.shape)
+        dw_d = np.random.normal(size=curr_genes_expression.shape)
+        amplitude_p = np.einsum("g,gt->gt", self.noise_parameters_genes[layer], np.power(production_rates, 0.5))
+        amplitude_d = np.einsum("g,gt->gt", self.noise_parameters_genes[layer], np.power(decays, 0.5))
+        noise = np.multiply(amplitude_p, dw_p) + np.multiply(amplitude_d, dw_d)
+        d_genes = 0.01 * np.subtract(production_rates, decays) + np.power(0.01, 0.5) * noise  # shape=(#genes,#types)
+        return d_genes
 
     def check_for_convergence(self, gene_concentration, concentration_criteria='np_all_close'):
         converged = False
@@ -137,27 +127,9 @@ class Sim:
 
         return rate
 
-    def get_selected_concentrations_time_steps(self):
-        return np.random.randint(low=-self.simulation_time_steps, high=0, size=self.num_cells_to_simulate)
-
-    def euler_maruyama(self, drift, diffusion, t_span, y0, num_points, key):  # TODO add it and fix it
-        delta_t = (t_span[1] - t_span[0]) / num_points
-        delta_W_α = jnp.sqrt(delta_t) * jax.random.normal(key, shape=(num_points,))
-        # split key
-        deltaW_β = jnp.sqrt(delta_t) * jax.random.normal(key, shape=(num_points,))
-
-        def hill(x, nonlinearity, half_coef):
-            kij * (jnp.power(x, nonlinearity) / (jnp.power(half_coef, nonlinearity) + jnp.power(x, nonlinearity)))
-
-        # @jax.jit
-        def step(carry, delta_w):
-            t, x = carry
-            x = x + (P - λ * x)
-            delta_t + q * jnp.sqrt(P) * delta_W_alpha + q * jnp.sqrt(_lambda * x) * delta_W_beta
-            t = t + delta_t
-            return (t, x), jnp.array((t, x))
-
-        return jax.lax.scan(step, (t_span[0], y0), noise)[1]
+    def add_external_noise(self):
+        """ sequencing noise """
+        raise NotImplementedError
 
 
 if __name__ == '__main__':
