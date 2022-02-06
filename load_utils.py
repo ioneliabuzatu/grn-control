@@ -5,6 +5,7 @@ import networkx as nx
 import numpy as np
 
 
+# TODO: We actually don't need adjacency, just the number of genes
 def load_grn(interactions_filename, adjacency):
     topo_sort_graph = nx.DiGraph()
 
