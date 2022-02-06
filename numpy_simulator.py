@@ -1,9 +1,5 @@
-import csv
 from copy import deepcopy
-from itertools import repeat
 
-import jax.numpy as jnp
-import networkx as nx
 import numpy as np
 from scipy.stats import ttest_ind
 
@@ -46,7 +42,7 @@ class Sim:
             self.init_concentration(layer, basal_production_rate)
 
             for step in range(1, self.simulation_time_steps):
-                curr_genes_expression = self.x[step-1, layer]
+                curr_genes_expression = self.x[step - 1, layer]
                 dx = self.euler_maruyama(basal_production_rate, curr_genes_expression, layer)
 
                 updated_concentration_gene = curr_genes_expression + dx
@@ -54,21 +50,34 @@ class Sim:
 
             self.mean_expression[layer] = np.mean(self.x[:, layer], axis=0)
 
-            # check_convergence = self.check_for_convergence(self.x[:, layer])  TODO: convergence layer-wise?
-            # print(f'step: {step} | layer: {num_layer} | Did it converge? : {check_convergence}')
-
     def calculate_half_response(self, layer):
+
         for gene in layer:
             regulators = np.where(self.adjacency[:, gene] != 0)
-            if regulators:  # TODO this is wrong, how to check for empty np.where?
-                mean_expression_per_cells_regulators_wise = self.mean_expression[regulators]
-                half_response = np.mean(mean_expression_per_cells_regulators_wise)
-                self.half_response[gene] = half_response
+            mean_expression_per_cells_regulators_wise = self.mean_expression[regulators]
+            half_response = np.mean(mean_expression_per_cells_regulators_wise)
+            self.half_response[gene] = half_response
 
     def init_concentration(self, layer: list, basal_production_rate):
         """ Init concentration genes; Note: calculate_half_response should be run before this method """
         rates = np.array([self.calculate_production_rate(gene, basal_production_rate) for gene in layer])
         self.x[0, layer] = rates / self.decay_lambda
+
+    def calculate_production_rate(self, gene, basal_production_rate):
+        gene_basal_production = basal_production_rate[gene]
+        if (gene_basal_production != 0).all():
+            return gene_basal_production
+
+        regulators = np.where(self.adjacency[:, gene] != 0)
+        mean_expression = self.mean_expression[regulators]
+        absolute_k = np.abs(self.adjacency[regulators][:, gene])
+        is_repressive = np.expand_dims(self.adjacency[regulators][:, gene] < 0, -1).repeat(self.num_cell_types,
+                                                                                           axis=-1)
+        half_response = self.half_response[gene]
+        hill_function = self.hill_function(mean_expression, half_response, is_repressive)
+        rate = np.einsum("r,rt->t", absolute_k, hill_function)
+
+        return rate
 
     def hill_function(self, regulators_concentration, half_response, is_repressive):
         rate = np.power(regulators_concentration, self.hill_coefficient) / (
@@ -86,7 +95,7 @@ class Sim:
         amplitude_p = np.einsum("g,gt->gt", self.noise_parameters_genes[layer], np.power(production_rates, 0.5))
         amplitude_d = np.einsum("g,gt->gt", self.noise_parameters_genes[layer], np.power(decays, 0.5))
         noise = np.multiply(amplitude_p, dw_p) + np.multiply(amplitude_d, dw_d)
-        d_genes = 0.01 * np.subtract(production_rates, decays) + np.power(0.01, 0.5) * noise  # shape=(#genes,#types)
+        d_genes = 0.01 * np.subtract(production_rates, decays) + np.power(0.01, 0.5)  # * noise  # shape=(#genes,#types)
         return d_genes
 
     def check_for_convergence(self, gene_concentration, concentration_criteria='np_all_close'):
@@ -110,22 +119,6 @@ class Sim:
                                     atol=self.p_value_for_convergence)
 
         return converged
-
-    def calculate_production_rate(self, gene, basal_production_rate):
-        gene_basal_production = basal_production_rate[gene]
-        if (gene_basal_production != 0).all():
-            return gene_basal_production
-
-        regulators = np.where(self.adjacency[:, gene] != 0)
-        mean_expression = self.mean_expression[regulators]
-        absolute_k = np.abs(self.adjacency[regulators][:, gene])
-        is_repressive = np.expand_dims(self.adjacency[regulators][:, gene] < 0, -1).repeat(self.num_cell_types,
-                                                                                           axis=-1)
-        half_response = self.half_response[gene]
-        hill_function = self.hill_function(mean_expression, half_response, is_repressive)
-        rate = np.einsum("r,rt->t", absolute_k, hill_function)
-
-        return rate
 
     def add_external_noise(self):
         """ sequencing noise """
