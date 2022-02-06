@@ -43,7 +43,7 @@ class Sim:
         # for r, g in zip(regulators, genes):
         #     self.regualtors_dict2[g].append(r)
         self.regulators_dict = dict(zip(genes, [np.array(np.where(self.adjacency[:, g])[0]) for g in genes]))
-        self.repressive_dict = dict(zip(genes, [self.adjacency[:, g] < 0 for g in genes]))
+        self.repressive_dict = dict(zip(genes, [self.adjacency[:, g, None].repeat(self.num_cell_types, axis=1) < 0 for g in genes]))
         # is_repressive = np.expand_dims(self.adjacency[regulators][:, genes] < 0, -1).repeat(self.num_cell_types, axis=-1)
 
         layers = topo_sort_graph_layers(graph)
@@ -69,7 +69,7 @@ class Sim:
             half_responses = self.calculate_half_response(tuple(layer), self.mean_expression)
             self.half_response[layer] = half_responses
 
-            self.init_concentration(tuple(layer), self.half_response, self.mean_expression)
+            self.x = self.init_concentration(tuple(layer), self.half_response, self.mean_expression, self.x)
 
             # TODO(Ioni) Make scan.
             for step in range(1, self.simulation_time_steps):
@@ -92,11 +92,10 @@ class Sim:
         return half_responses
 
     @functools.partial(jax.jit, static_argnums=(0, 1))  # Jax should ignore the class instance (self)
-    def init_concentration(self, layer: list, half_response: np.ndarray, mean_expression: np.ndarray):
+    def init_concentration(self, layer: list, half_response: np.ndarray, mean_expression: np.ndarray, x):
         """ Init concentration genes; Note: calculate_half_response should be run before this method """
         rates = [self.calculate_production_rate(gene, half_response, mean_expression) for gene in layer]
-        rates = np.array(rates)
-        self.x[0, layer] = rates / self.decay_lambda
+        return x.at[0, layer].set(rates)
 
     @functools.partial(jax.jit, static_argnums=(0, 1))  # Jax should ignore the class instance (self)
     def calculate_production_rate(self, gene, half_response, mean_expression):
@@ -110,9 +109,9 @@ class Sim:
 
         half_response = half_response[gene]
         is_repressive = self.repressive_dict[gene]
-        is_repressive = is_repressive[regulators]
+        is_repressive_ = is_repressive[regulators]
 
-        hill_function = self.hill_function(mean_expression, half_response, is_repressive)
+        hill_function = self.hill_function(mean_expression, half_response, is_repressive_)
         rate = jnp.einsum("r,rt->t", absolute_k, hill_function)
         return rate
 
@@ -121,8 +120,9 @@ class Sim:
                 jnp.power(regulators_concentration, self.hill_coefficient) /
                 (jnp.power(half_response, self.hill_coefficient) + jnp.power(regulators_concentration, self.hill_coefficient))
         )
-        rate = rate.at[is_repressive].set(1 - rate[is_repressive])
-        return rate
+        rate2 = jnp.where(is_repressive, rate, 1 - rate)
+        # rate = rate.at[is_repressive].set(1 - rate[is_repressive])
+        return rate2
 
     @functools.partial(jax.jit, static_argnums=(0,))  # Ignore the class instance
     def euler_maruyama_master(self, basal_production_rate, curr_genes_expression, layer):
@@ -179,6 +179,6 @@ class Sim:
 
 if __name__ == '__main__':
     sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=5)
-    with jax.disable_jit():
-        sim.run()
+    # with jax.disable_jit():
+    #    sim.run()
     sim.run()
