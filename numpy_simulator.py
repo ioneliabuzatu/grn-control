@@ -26,13 +26,13 @@ class Sim:
         self.is_regulator = None
         self.simulation_time_steps = self.sampling_state * self.num_cells_to_simulate
         print("sampling time steps: ", self.simulation_time_steps)
-        self.x = np.zeros(shape=(self.simulation_time_steps, num_genes, num_cells_types))
-        self.half_response = np.zeros(num_genes)
+        self.x = jnp.zeros(shape=(self.simulation_time_steps, num_genes, num_cells_types))
+        self.half_response = jnp.zeros(num_genes)
         self.hill_coefficient = 2
 
         self.p_value_for_convergence = 1e-3
         self.window_len = 100
-        self.noise_parameters_genes = np.ones(num_genes)
+        self.noise_parameters_genes = 1.  # np.ones(num_genes) TODO: add noise as array
 
     def run(self):
         adjacency, graph = load_grn(self.interactions_filename, self.adjacency)
@@ -42,6 +42,7 @@ class Sim:
         # self.regualtors_dict2 = collections.defaultdict(list)
         # for r, g in zip(regulators, genes):
         #     self.regualtors_dict2[g].append(r)
+        # TODO: there is a loop too much below
         self.regulators_dict = dict(zip(genes, [np.array(np.where(self.adjacency[:, g])[0]) for g in genes]))
         self.repressive_dict = dict(zip(genes, [self.adjacency[:, g, None].repeat(self.num_cell_types, axis=1) < 0 for g in genes]))
         # is_repressive = np.expand_dims(self.adjacency[regulators][:, genes] < 0, -1).repeat(self.num_cell_types, axis=-1)
@@ -55,31 +56,31 @@ class Sim:
     def simulate_expression_layer_wise(self, layers, basal_production_rate):
         layers_copy = [np.array(l) for l in deepcopy(layers)]  # TODO: remove deepcopy
         layer = np.array(layers_copy[0])
-        self.x[0, layer] = basal_production_rate[np.array(layer)] / self.decay_lambda
+        self.x = self.x.at[0, layer].set(basal_production_rate[np.array(layer)] / self.decay_lambda)
 
         for step in range(1, self.simulation_time_steps):
             curr_genes_expression = self.x[step - 1, layer]
-            dx = self.euler_maruyama_master(basal_production_rate, curr_genes_expression, layer)
+            dx = self.euler_maruyama_master(basal_production_rate[layer], curr_genes_expression, tuple(layer))
             updated_concentration_gene = curr_genes_expression + dx
-            self.x[step, layer] = updated_concentration_gene.clip(a_min=0)  # clipping is important!
+            self.x = self.x.at[step, layer].set(updated_concentration_gene.clip(a_min=0))  # clipping is important!
 
         self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
 
         for num_layer, layer in enumerate(layers_copy[1:], start=1):
             half_responses = self.calculate_half_response(tuple(layer), self.mean_expression)
-            self.half_response[layer] = half_responses
+            self.half_response = self.half_response.at[layer].set(half_responses)
 
             self.x = self.init_concentration(tuple(layer), self.half_response, self.mean_expression, self.x)
 
             # TODO(Ioni) Make scan.
             for step in range(1, self.simulation_time_steps):
                 curr_genes_expression = self.x[step - 1, layer]
-                dx = self.euler_maruyama(basal_production_rate, curr_genes_expression, layer)
+                dx = self.euler_maruyama(curr_genes_expression, tuple(layer), self.half_response, self.mean_expression)
 
                 updated_concentration_gene = curr_genes_expression + dx
-                self.x[step, layer] = updated_concentration_gene.clip(0)  # clipping is important!
+                self.x = self.x.at[step, layer].set(updated_concentration_gene.clip(a_min=0))  # clipping is important!
 
-            self.mean_expression[layer] = np.mean(self.x[:, layer], axis=0)
+            self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
 
     @functools.partial(jax.jit, static_argnums=(0, 1))  # Jax should ignore the class instance (self), and layer
     def calculate_half_response(self, layer, mean_expression):
@@ -124,30 +125,29 @@ class Sim:
         # rate = rate.at[is_repressive].set(1 - rate[is_repressive])
         return rate2
 
-    @functools.partial(jax.jit, static_argnums=(0,))  # Ignore the class instance
-    def euler_maruyama_master(self, basal_production_rate, curr_genes_expression, layer):
-        production_rates = basal_production_rate[layer]
+    @functools.partial(jax.jit, static_argnums=(0, 3))  # Ignore the class instance
+    def euler_maruyama_master(self, production_rates, curr_genes_expression, layer):
         decays = jnp.multiply(self.decay_lambda, curr_genes_expression)
         dw_p = np.random.normal(size=curr_genes_expression.shape)  # TODO: use jax and noise control
         dw_d = np.random.normal(size=curr_genes_expression.shape)  # TODO: use jax and noise control
         # amplitude_p = jnp.einsum("g,gt->gt", self.noise_parameters_genes[layer], jnp.power(production_rates, 0.5))
         # amplitude_d = jnp.einsum("g,gt->gt", self.noise_parameters_genes[layer], jnp.power(decays, 0.5))
-        amplitude_p = jnp.einsum(",gt->gt", self.noise_parameters_genes[0], jnp.power(production_rates, 0.5))
-        amplitude_d = jnp.einsum(",gt->gt", self.noise_parameters_genes[0], jnp.power(decays, 0.5))
+        amplitude_p = jnp.einsum(",gt->gt", self.noise_parameters_genes, jnp.power(production_rates, 0.5))
+        amplitude_d = jnp.einsum(",gt->gt", self.noise_parameters_genes, jnp.power(decays, 0.5))
         noise = jnp.multiply(amplitude_p, dw_p) + jnp.multiply(amplitude_d, dw_d)
         d_genes = 0.01 * jnp.subtract(production_rates, decays) + jnp.power(0.01, 0.5)  # * noise  # shape=(#genes,#types)
         return d_genes
 
-    @functools.partial(jax.jit, static_argnums=(0,))  # Ignore the class instance
-    def euler_maruyama(self, basal_production_rate, curr_genes_expression, layer):
-        production_rates = [self.calculate_production_rate(gene, basal_production_rate) for gene in layer]
-        decays = np.multiply(self.decay_lambda, curr_genes_expression)
-        dw_p = np.random.normal(size=curr_genes_expression.shape)
-        dw_d = np.random.normal(size=curr_genes_expression.shape)
-        amplitude_p = jnp.einsum("g,gt->gt", self.noise_parameters_genes, np.power(production_rates, 0.5))
-        amplitude_d = jnp.einsum("g,gt->gt", self.noise_parameters_genes, np.power(decays, 0.5))
-        noise = np.multiply(amplitude_p, dw_p) + np.multiply(amplitude_d, dw_d)
-        d_genes = 0.01 * np.subtract(production_rates, decays) + np.power(0.01, 0.5)  # * noise  # shape=(#genes,#types)
+    @functools.partial(jax.jit, static_argnums=(0, 2))
+    def euler_maruyama(self, curr_genes_expression, layer, half_response, mean_expression):
+        production_rates = jnp.array([self.calculate_production_rate(gene, half_response, mean_expression) for gene in layer])
+        decays = jnp.multiply(self.decay_lambda, curr_genes_expression)
+        dw_p = np.random.normal(size=curr_genes_expression.shape)  # TODO: use jax and noise control
+        dw_d = np.random.normal(size=curr_genes_expression.shape) # TODO: use jax and noise control
+        amplitude_p = jnp.einsum(",gt->gt", self.noise_parameters_genes, jnp.power(production_rates, 0.5))
+        amplitude_d = jnp.einsum(",gt->gt", self.noise_parameters_genes, jnp.power(decays, 0.5))
+        noise = jnp.multiply(amplitude_p, dw_p) + jnp.multiply(amplitude_d, dw_d)
+        d_genes = 0.01 * jnp.subtract(production_rates, decays) + jnp.power(0.01, 0.5)  # * noise  # shape=(#genes,#types)
         return d_genes
 
     def check_for_convergence(self, gene_concentration, concentration_criteria='np_all_close'):
