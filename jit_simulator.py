@@ -10,7 +10,6 @@ from load_utils import load_grn, topo_sort_graph_layers, get_basal_production_ra
 
 
 class Sim:
-
     def __init__(self, num_genes, num_cells_types, num_cells_to_simulate, **kwargs):
         self.interactions_filename = 'data/Interaction_cID_4.txt'
         self.regulators_filename = 'data/Regs_cID_4.txt'
@@ -33,8 +32,12 @@ class Sim:
         self.p_value_for_convergence = 1e-3
         self.window_len = 100
         self.noise_parameters_genes = 1.  # np.ones(num_genes) TODO: add noise as array
+        self.randoms = []
 
-    def run(self):
+    def run(self, randoms):
+        self.randoms = randoms
+        self.random_idx = 0
+        
         adjacency, graph = load_grn(self.interactions_filename, self.adjacency)
         self.adjacency = jnp.array(adjacency)
         regulators, genes = np.where(self.adjacency)
@@ -125,11 +128,23 @@ class Sim:
         # rate = rate.at[is_repressive].set(1 - rate[is_repressive])
         return rate2
 
+    def np_random_normal(shape)
+        randoms_needded = shape[0]
+        randoms_from, randoms_to = self.random_idx, self.random_idx + randoms_needded
+        
+        if randoms_to > len(self.randoms):
+            randoms_from, randoms_to = 0, randoms_needded
+            
+        self.random_idx = randoms_to
+        return self.randoms[randoms_from: randoms_to]
+        
     @functools.partial(jax.jit, static_argnums=(0, 3))  # Ignore the class instance
     def euler_maruyama_master(self, production_rates, curr_genes_expression, layer):
         decays = jnp.multiply(self.decay_lambda, curr_genes_expression)
-        dw_p = np.random.normal(size=curr_genes_expression.shape)  # TODO: use jax and noise control
-        dw_d = np.random.normal(size=curr_genes_expression.shape)  # TODO: use jax and noise control
+        # dw_p = np.random.normal(size=curr_genes_expression.shape)  # TODO: use jax and noise control
+        # dw_d = np.random.normal(size=curr_genes_expression.shape)  # TODO: use jax and noise control
+        dw_p = self.np_random_normal(curr_genes_expression.shape)
+        dw_d = self.np_random_normal(curr_genes_expression.shape)
         # amplitude_p = jnp.einsum("g,gt->gt", self.noise_parameters_genes[layer], jnp.power(production_rates, 0.5))
         # amplitude_d = jnp.einsum("g,gt->gt", self.noise_parameters_genes[layer], jnp.power(decays, 0.5))
         amplitude_p = jnp.einsum(",gt->gt", self.noise_parameters_genes, jnp.power(production_rates, 0.5))
@@ -142,8 +157,11 @@ class Sim:
     def euler_maruyama(self, curr_genes_expression, layer, half_response, mean_expression):
         production_rates = jnp.array([self.calculate_production_rate(gene, half_response, mean_expression) for gene in layer])
         decays = jnp.multiply(self.decay_lambda, curr_genes_expression)
-        dw_p = np.random.normal(size=curr_genes_expression.shape)  # TODO: use jax and noise control
-        dw_d = np.random.normal(size=curr_genes_expression.shape) # TODO: use jax and noise control
+        # dw_p = np.random.normal(size=curr_genes_expression.shape)  # TODO: use jax and noise control
+        # dw_d = np.random.normal(size=curr_genes_expression.shape) # TODO: use jax and noise control
+        dw_p = self.np_random_normal(curr_genes_expression.shape)
+        dw_d = self.np_random_normal(curr_genes_expression.shape)
+
         amplitude_p = jnp.einsum(",gt->gt", self.noise_parameters_genes, jnp.power(production_rates, 0.5))
         amplitude_d = jnp.einsum(",gt->gt", self.noise_parameters_genes, jnp.power(decays, 0.5))
         noise = jnp.multiply(amplitude_p, dw_p) + jnp.multiply(amplitude_d, dw_d)
@@ -181,4 +199,4 @@ if __name__ == '__main__':
     sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=5)
     # with jax.disable_jit():
     #    sim.run()
-    sim.run()
+    sim.run(np.random.normal(100_000, 9)) # Replace 100_000 with the correct number
