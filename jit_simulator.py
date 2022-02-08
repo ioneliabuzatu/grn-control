@@ -35,7 +35,6 @@ class Sim:
         self.p_value_for_convergence = 1e-3
         self.window_len = 100
         self.noise_parameters_genes = np.ones(num_genes)
-        self.rng_key = jax.random.PRNGKey(0)
 
     def run(self):
         adjacency, graph = load_grn(self.interactions_filename, self.adjacency)
@@ -54,13 +53,14 @@ class Sim:
         self.simulate_expression_layer_wise(layers, basal_production_rate)
 
     def simulate_expression_layer_wise(self, layers, basal_production_rate):
+        rng_key = jax.random.PRNGKey(0)
         layers_copy = [np.array(l) for l in deepcopy(layers)]  # TODO: remove deepcopy
         layer = np.array(layers_copy[0])
         self.x = self.x.at[0, layer].set(basal_production_rate[np.array(layer)] / self.decay_lambda)
 
         for step in range(1, self.simulation_time_steps):
             curr_genes_expression = self.x[step - 1, layer]
-            dx = self.euler_maruyama_master(basal_production_rate, curr_genes_expression, tuple(layer))
+            dx, rng_key = self.euler_maruyama_master(basal_production_rate, curr_genes_expression, tuple(layer), rng_key)
             updated_concentration_gene = curr_genes_expression + dx
             self.x = self.x.at[step, layer].set(updated_concentration_gene.clip(min=0))  # clipping is important!
 
@@ -74,7 +74,7 @@ class Sim:
             # TODO(Ioni) Make scan.
             for step in range(1, self.simulation_time_steps):
                 curr_genes_expression = self.x[step - 1, layer]
-                dx = self.euler_maruyama_targets(curr_genes_expression, tuple(layer), self.half_response, self.mean_expression)
+                dx, rng_key = self.euler_maruyama_targets(curr_genes_expression, tuple(layer), self.half_response, self.mean_expression, rng_key)
 
                 updated_concentration_gene = curr_genes_expression + dx
                 self.x = self.x.at[step, layer].set(updated_concentration_gene.clip(min=0))  # clipping is important!
@@ -124,9 +124,9 @@ class Sim:
         # rate = rate.at[is_repressive].set(1 - rate[is_repressive])
         return rate2
 
-    @functools.partial(jax.jit, static_argnums=(0, 3))  # Ignore the class instance
-    def euler_maruyama_master(self, basal_production_rate, curr_genes_expression, layer: tuple):
-        self.rng_key, key1, key2 = jax.random.split(self.rng_key, 3)
+    @functools.partial(jax.jit, static_argnums=(0, 3))
+    def euler_maruyama_master(self, basal_production_rate, curr_genes_expression, layer: tuple, rng_key: jax.random.PRNGKey):
+        rng_key, key1, key2 = jax.random.split(rng_key, 3)
 
         layer_as_list = list(deepcopy(layer))
         production_rates = basal_production_rate[jnp.array(layer)]
@@ -137,10 +137,10 @@ class Sim:
         amplitude_d = jnp.einsum("g,gt->gt", self.noise_parameters_genes[layer_as_list], jnp.power(decays, 0.5))
         noise = jnp.multiply(amplitude_p, dw_p) + jnp.multiply(amplitude_d, dw_d)
         d_genes = 0.01 * jnp.subtract(production_rates, decays) + jnp.power(0.01, 0.5) * noise  # shape=(#genes,#types)
-        return d_genes
+        return d_genes, rng_key
 
-    def euler_maruyama_targets(self, curr_genes_expression, layer, half_response, mean_expression):
-        self.rng_key, key1, key2 = jax.random.split(self.rng_key, 3)
+    def euler_maruyama_targets(self, curr_genes_expression, layer, half_response, mean_expression, rng_key: jax.random.PRNGKey):
+        rng_key, key1, key2 = jax.random.split(rng_key, 3)
 
         layer_as_list = list(deepcopy(layer))
         production_rates = jnp.array([self.calculate_production_rate(gene, half_response, mean_expression) for gene in layer])
@@ -151,7 +151,7 @@ class Sim:
         amplitude_d = jnp.einsum("g,gt->gt", self.noise_parameters_genes[layer_as_list], jnp.power(decays, 0.5))
         noise = jnp.multiply(amplitude_p, dw_p) + jnp.multiply(amplitude_d, dw_d)
         d_genes = 0.01 * jnp.subtract(production_rates, decays) + jnp.power(0.01, 0.5) * noise  # shape=(#genes,#types)
-        return d_genes
+        return d_genes, rng_key
 
     @functools.partial(jax.jit, static_argnums=(0, 2))
     def euler_maruyama_targets_scanned(self, curr_genes_expression, layer, half_response, mean_expression, key):  # TODO takes ages :(
