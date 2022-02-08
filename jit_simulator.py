@@ -1,3 +1,5 @@
+import collections
+from time import time
 import functools
 from copy import deepcopy
 from time import time
