@@ -131,8 +131,15 @@ class Sim:
         layer_as_list = list(deepcopy(layer))
         production_rates = basal_production_rate[jnp.array(layer)]
         decays = jnp.multiply(self.decay_lambda, curr_genes_expression)
+<<<<<<< HEAD
         dw_p = jax.random.normal(key1, shape=curr_genes_expression.shape)
         dw_d = jax.random.normal(key2, shape=curr_genes_expression.shape)
+=======
+        dw_p = jax.random.normal(subkey1, shape=curr_genes_expression.shape)  # TODO: use jax and noise control
+        dw_d = jax.random.normal(subkey2, shape=curr_genes_expression.shape)  # TODO: use jax and noise control
+        # dw_p = np.random.normal(size=curr_genes_expression.shape)  # TODO: use jax and noise control
+        # dw_d = np.random.normal(size=curr_genes_expression.shape)  # TODO: use jax and noise control
+>>>>>>> 966b920 (mmm key still todo)
         amplitude_p = jnp.einsum("g,gt->gt", self.noise_parameters_genes[layer_as_list], jnp.power(production_rates, 0.5))
         amplitude_d = jnp.einsum("g,gt->gt", self.noise_parameters_genes[layer_as_list], jnp.power(decays, 0.5))
         noise = jnp.multiply(amplitude_p, dw_p) + jnp.multiply(amplitude_d, dw_d)
