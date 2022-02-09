@@ -110,6 +110,10 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+<<<<<<< HEAD
+=======
+.idea
+>>>>>>> d34fc18b97bce6c3fb433300d2aece0da6497268
 
 # Spyder project settings
 .spyderproject
@@ -130,3 +134,6 @@ dmypy.json
 .pyre/
 wandb/
 runs/
+SERGIO/
+resources/experiments
+resources/papers
