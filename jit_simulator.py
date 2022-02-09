@@ -59,7 +59,13 @@ class Sim:
         layer = np.array(layers_copy[0])
         self.x = self.x.at[0, layer].set(basal_production_rate[np.array(layer)] / self.decay_lambda)
 
-        rng_key = self.simulate_master_layer(basal_production_rate, layer, rng_key)
+        curr_genes_expression = self.x[0]
+        curr_genes_expression = {k : curr_genes_expression[k] for k in range(len(curr_genes_expression))} # TODO remove this
+        d_genes, rng_key = jax.vmap(self.simulate_master_layer_vmap, in_axes=(1, 0, None, None))(
+            basal_production_rate, curr_genes_expression, layer, rng_key
+        )
+        self.x = self.x.at[1:, layer].set(d_genes.T)
+        self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
 
         for num_layer, layer in enumerate(layers_copy[1:], start=1):
             half_responses = self.calculate_half_response(tuple(layer), self.mean_expression)
@@ -86,15 +92,14 @@ class Sim:
         self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
         return rng_key
     
-    def simulate_master_layer_vmap(self, basal_production_rate, layer, rng_key):
-        for step in range(1, self.simulation_time_steps):
-            curr_genes_expression = self.x[step - 1, layer]
-            dx, rng_key = self.euler_maruyama_master(basal_production_rate, curr_genes_expression, tuple(layer),
-                                                     rng_key)
-            updated_concentration_gene = curr_genes_expression + dx
-            self.x = self.x.at[step, layer].set(updated_concentration_gene.clip(min=0))  # clipping is important!
-        self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
-        return rng_key
+    def simulate_master_layer_vmap(self, basal_production_rate, curr_genes_expression, layer, rng_key):
+        dx, rng_key = jax.vmap(self.euler_maruyama_master_scan, in_axes=(0, 0,0,None))(
+            jnp.array([curr_genes_expression[gene] for gene in layer]),
+            basal_production_rate.take(jnp.array(layer)),
+            self.noise_parameters_genes.take(jnp.array(layer)),
+            rng_key
+        )
+        return dx, rng_key
 
     @functools.partial(jax.jit, static_argnums=(0, 1))  # Jax should ignore the class instance (self), and layer
     def calculate_half_response(self, layer, mean_expression):
@@ -155,7 +160,7 @@ class Sim:
         return d_genes, rng_key
 
     def euler_maruyama_targets(self, curr_genes_expression, layer, half_response, mean_expression, rng_key: jax.random.PRNGKey):
-        rng_key, key1, key2 = jax.random.split(rng_key, 3)
+        rng_key, key1, key2 = jax.random.split(rng_key[0][0], 3)
 
         layer_as_list = list(deepcopy(layer))
         production_rates = jnp.array([self.calculate_production_rate(gene, half_response, mean_expression) for gene in layer])
@@ -168,13 +173,34 @@ class Sim:
         d_genes = 0.01 * jnp.subtract(production_rates, decays) + jnp.power(0.01, 0.5) * noise  # shape=(#genes,#types)
         return d_genes, rng_key
 
+    @functools.partial(jax.jit, static_argnums=(0,))
+    def euler_maruyama_master_scan(self, curr_genes_expression, basal_production_rate, q, rng_key: jax.random.PRNGKey):
+
+        rng_key, key1, key2 = jax.random.split(rng_key, 3)
+        production_rates = basal_production_rate
+        decays = jnp.multiply(self.decay_lambda, curr_genes_expression)
+        dw_p = jax.random.normal(key1, shape=(self.simulation_time_steps-1,))
+        dw_d = jax.random.normal(key2, shape=(self.simulation_time_steps-1,))
+
+        def concentration_forward(curr_concentration, state):
+            dw_production, dw_decay = state
+            amplitude_p = q * jnp.power(production_rates, 0.5)
+            amplitude_d = q * jnp.power(decays, 0.5)
+            noise = jnp.multiply(amplitude_p, dw_production) + jnp.multiply(amplitude_d, dw_decay)
+            next_gene_conc = curr_concentration + (0.01 * jnp.subtract(production_rates, decays)) + jnp.power(
+            0.01, 0.5) * noise  # shape=( # #genes,#types)
+            next_gene_conc = jnp.clip(next_gene_conc, a_min=0)
+            return next_gene_conc, next_gene_conc
+
+        all_states = dw_p, dw_d
+        gene_trajectory_concentration = jax.lax.scan(concentration_forward, curr_genes_expression, all_states)[1]
+        return gene_trajectory_concentration, rng_key
+
     @functools.partial(jax.jit, static_argnums=(0, 2))
     def euler_maruyama_targets_scanned(self, curr_genes_expression, layer, half_response, mean_expression, key):  # TODO takes ages :(
-        layer_as_list = list(deepcopy(layer))
-        key, subkey = jax.random.split(key)
-        dw_p = jax.random.normal(subkey, shape=(self.simulation_time_steps - 1,))
-        key, subkey = jax.random.split(key)
-        dw_d = jax.random.normal(subkey, shape=(self.simulation_time_steps - 1,))
+        rng_key, key1, key2 = jax.random.split(rng_key, 3)
+        dw_p = jax.random.normal(key1, shape=(self.simulation_time_steps - 1,))
+        dw_d = jax.random.normal(key2, shape=(self.simulation_time_steps - 1,))
 
         def step(carry, state):
             curr_x = carry
