@@ -59,13 +59,7 @@ class Sim:
         layer = np.array(layers_copy[0])
         self.x = self.x.at[0, layer].set(basal_production_rate[np.array(layer)] / self.decay_lambda)
 
-        for step in range(1, self.simulation_time_steps):
-            curr_genes_expression = self.x[step - 1, layer]
-            dx, rng_key = self.euler_maruyama_master(basal_production_rate, curr_genes_expression, tuple(layer), rng_key)
-            updated_concentration_gene = curr_genes_expression + dx
-            self.x = self.x.at[step, layer].set(updated_concentration_gene.clip(min=0))  # clipping is important!
-
-        self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
+        rng_key = self.simulate_master_layer(basal_production_rate, layer, rng_key)
 
         for num_layer, layer in enumerate(layers_copy[1:], start=1):
             half_responses = self.calculate_half_response(tuple(layer), self.mean_expression)
@@ -81,6 +75,26 @@ class Sim:
                 self.x = self.x.at[step, layer].set(updated_concentration_gene.clip(min=0))  # clipping is important!
 
             self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
+
+    def simulate_master_layer(self, basal_production_rate, layer, rng_key):
+        for step in range(1, self.simulation_time_steps):
+            curr_genes_expression = self.x[step - 1, layer]
+            dx, rng_key = self.euler_maruyama_master(basal_production_rate, curr_genes_expression, tuple(layer),
+                                                     rng_key)
+            updated_concentration_gene = curr_genes_expression + dx
+            self.x = self.x.at[step, layer].set(updated_concentration_gene.clip(min=0))  # clipping is important!
+        self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
+        return rng_key
+    
+    def simulate_master_layer_vmap(self, basal_production_rate, layer, rng_key):
+        for step in range(1, self.simulation_time_steps):
+            curr_genes_expression = self.x[step - 1, layer]
+            dx, rng_key = self.euler_maruyama_master(basal_production_rate, curr_genes_expression, tuple(layer),
+                                                     rng_key)
+            updated_concentration_gene = curr_genes_expression + dx
+            self.x = self.x.at[step, layer].set(updated_concentration_gene.clip(min=0))  # clipping is important!
+        self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
+        return rng_key
 
     @functools.partial(jax.jit, static_argnums=(0, 1))  # Jax should ignore the class instance (self), and layer
     def calculate_half_response(self, layer, mean_expression):
