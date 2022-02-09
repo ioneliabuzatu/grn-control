@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import ttest_ind
 
-from load_utils import load_grn, topo_sort_graph_layers, get_basal_production_rate
+from src.load_utils import load_grn, topo_sort_graph_layers, get_basal_production_rate
+from src.zoo_functions import is_debugger_active
 
 
 class Sim:
@@ -129,17 +130,10 @@ class Sim:
         rng_key, key1, key2 = jax.random.split(rng_key, 3)
 
         layer_as_list = list(deepcopy(layer))
-        production_rates = basal_production_rate[jnp.array(layer)]
+        production_rates = basal_production_rate[layer, :]
         decays = jnp.multiply(self.decay_lambda, curr_genes_expression)
-<<<<<<< HEAD
         dw_p = jax.random.normal(key1, shape=curr_genes_expression.shape)
         dw_d = jax.random.normal(key2, shape=curr_genes_expression.shape)
-=======
-        dw_p = jax.random.normal(subkey1, shape=curr_genes_expression.shape)  # TODO: use jax and noise control
-        dw_d = jax.random.normal(subkey2, shape=curr_genes_expression.shape)  # TODO: use jax and noise control
-        # dw_p = np.random.normal(size=curr_genes_expression.shape)  # TODO: use jax and noise control
-        # dw_d = np.random.normal(size=curr_genes_expression.shape)  # TODO: use jax and noise control
->>>>>>> 966b920 (mmm key still todo)
         amplitude_p = jnp.einsum("g,gt->gt", self.noise_parameters_genes[layer_as_list], jnp.power(production_rates, 0.5))
         amplitude_d = jnp.einsum("g,gt->gt", self.noise_parameters_genes[layer_as_list], jnp.power(decays, 0.5))
         noise = jnp.multiply(amplitude_p, dw_p) + jnp.multiply(amplitude_d, dw_d)
@@ -213,9 +207,11 @@ class Sim:
 if __name__ == '__main__':
     start = time()
     sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=5)
-    # with jax.disable_jit():
-    #    sim.run()
-    sim.run()
+    if is_debugger_active():
+        with jax.disable_jit():
+            sim.run()
+    else:
+        sim.run()
     x = sim.x
     print(x.shape)
     print(f"time: {time() - start}")

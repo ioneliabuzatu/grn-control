@@ -132,3 +132,5 @@ dmypy.json
 wandb/
 runs/
 SERGIO/
+resources/experiments
+resources/papers

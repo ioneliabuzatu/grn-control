@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 from functools import partial
 
-from load_utils import load_grn, topo_sort_graph_layers, get_basal_production_rate
+from src.load_utils import load_grn, topo_sort_graph_layers, get_basal_production_rate
 
 
 class Sim:
