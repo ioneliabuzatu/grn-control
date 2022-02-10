@@ -26,7 +26,7 @@ class Sim:
         self.hill_coefficient = 2
         self.noise_amplitude = jnp.ones(self.num_genes)  # TODO: Redefine according to article
         self.t_span = (0, 1)
-        self.num_points = 200
+        self.num_points = 5
 
     def run(self):
         self.adjacency, graph = load_grn(self.interactions_filename, self.adjacency)
@@ -184,6 +184,7 @@ class Sim:
             current_x = carry
             delta_W_alfa, delta_W_beta = state
             P = basal_rate # Production rate
+            print(P.shape)
             next_x = current_x + (P - self.decay_lambda * current_x)*delta_t +\
                      noise_amplitude * jnp.sqrt(P) * delta_W_alfa +\
                      noise_amplitude * jnp.sqrt(self.decay_lambda * current_x) * delta_W_beta
@@ -225,5 +226,8 @@ class Sim:
 
 
 if __name__ == '__main__':
-    trajectories = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=5).run()  # return complete
-    print(trajectories)  # trajectories for all genes across all cells
+    import time
+    start = time.time()
+    trajectories = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=7).run()  # return complete
+    print(len(trajectories), trajectories[0].shape)  # trajectories for all genes across all cells
+    print(f"took {time.time() - start}")

@@ -101,7 +101,8 @@ class Sim:
     def euler_maruyama(self, basal_production_rate, curr_genes_expression, layer):
         production_rates = [self.calculate_production_rate(gene, basal_production_rate) for gene in layer]
         decays = np.multiply(self.decay_lambda, curr_genes_expression)
-        dw_p = np.random.normal(size=curr_genes_expression.shape)
+        dw_p = np.random.normal(size=curr_genes_expression.shape) # np.random.normal(1)*jnp.ones_like(
+        # curr_genes_expression)
         dw_d = np.random.normal(size=curr_genes_expression.shape)
         amplitude_p = np.einsum("g,gt->gt", self.noise_parameters_genes[layer], np.power(production_rates, 0.5))
         amplitude_d = np.einsum("g,gt->gt", self.noise_parameters_genes[layer], np.power(decays, 0.5))
