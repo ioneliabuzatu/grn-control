@@ -12,7 +12,7 @@ np.random.seed(123)
 
 class Sim:
 
-    def __init__(self, num_genes, num_cells_types, num_cells_to_simulate, interactions, regulators,
+    def __init__(self, num_genes, num_cells_types, num_cells_to_simulate, interactions, regulators, noise_amplitude,
                  deterministic=False, **kwargs):
         self.interactions_filename = interactions
         self.regulators_filename = regulators
@@ -32,7 +32,7 @@ class Sim:
 
         self.p_value_for_convergence = 1e-3
         self.window_len = 100
-        self.noise_parameters_genes = np.ones(num_genes)
+        self.noise_parameters_genes = np.repeat(noise_amplitude, num_genes)
         self._x = np.zeros(shape=(num_cells_to_simulate, num_genes, num_cells_types))
 
     def run(self):
@@ -50,9 +50,10 @@ class Sim:
                 self.calculate_half_response(layer)
             self.init_concentration(layer, basal_production_rate)
             print("layer: ", num_layer)
+            production_rates = [self.calculate_production_rate(gene, basal_production_rate) for gene in layer]
             for step in range(1, self.simulation_time_steps):
                 curr_genes_expression = self.x[step - 1, layer]
-                dx = self.euler_maruyama(basal_production_rate, curr_genes_expression, layer)
+                dx = self.euler_maruyama(production_rates, curr_genes_expression, layer)
 
                 updated_concentration_gene = curr_genes_expression + dx
                 self.x[step, layer] = updated_concentration_gene.clip(0)  # clipping is important!
@@ -72,7 +73,7 @@ class Sim:
     def init_concentration(self, layer: list, basal_production_rate):
         """ Init concentration genes; Note: calculate_half_response should be run before this method """
         rates = np.array([self.calculate_production_rate(gene, basal_production_rate) for gene in layer])
-        self.x[0, layer] = 1 # rates / self.decay_lambda
+        self.x[0, layer] = rates / self.decay_lambda
 
     def calculate_production_rate(self, gene, basal_production_rate):
         gene_basal_production = basal_production_rate[gene]
@@ -98,8 +99,7 @@ class Sim:
         rate[is_repressive] = 1 - rate[is_repressive]
         return rate
 
-    def euler_maruyama(self, basal_production_rate, curr_genes_expression, layer):
-        production_rates = [self.calculate_production_rate(gene, basal_production_rate) for gene in layer]
+    def euler_maruyama(self, production_rates, curr_genes_expression, layer):
         decays = np.multiply(self.decay_lambda, curr_genes_expression)
         dw_p = np.random.normal(size=curr_genes_expression.shape) # np.random.normal(1)*jnp.ones_like(
         # curr_genes_expression)
@@ -242,13 +242,17 @@ if __name__ == '__main__':
     start = time.time()
     interactions_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Interaction_cID_4.txt'
     regulators_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Regs_cID_4.txt'
-    sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=300,
-              interactions=interactions_filename, regulators=regulators_filename, deterministic=True)
+    sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=1000,
+              interactions=interactions_filename, regulators=regulators_filename,
+              noise_amplitude=0.1, deterministic=False)
     sim.run()
-    expr_clean = sim.x
+    expr_clean = sim. x
     print(expr_clean.shape)
     print(f"took {time.time() - start} seconds")
-    plt.plot(expr_clean.T[0, 1, :])
-    plt.show()
-    plt.plot(expr_clean.T[0, 99, :])
+
+    _, axes = plt.subplots(1, 2, figsize=(10, 5))
+    axes[0].plot(expr_clean.T[0, 1, :])
+    axes[0].set_title('Gene 1')
+    axes[1].plot(expr_clean.T[0, 99, :])
+    axes[1].set_title('Gene 99')
     plt.show()
