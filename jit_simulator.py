@@ -9,12 +9,13 @@ import numpy as np
 from scipy.stats import ttest_ind
 
 from src.load_utils import load_grn, topo_sort_graph_layers, get_basal_production_rate
-from src.zoo_functions import is_debugger_active
+from src.zoo_functions import is_debugger_active, plot_two_genes
 
 
 class Sim:
 
-    def __init__(self, num_genes, num_cells_types, num_cells_to_simulate, **kwargs):
+    def __init__(self, num_genes: int, num_cells_types: int, num_cells_to_simulate: int, noise_amplitude: float = 1.,
+                 **kwargs):
         self.interactions_filename = 'data/Interaction_cID_4.txt'
         self.regulators_filename = 'data/Regs_cID_4.txt'
         self.num_genes = num_genes
@@ -32,10 +33,9 @@ class Sim:
         self.x = jnp.zeros(shape=(self.simulation_time_steps, num_genes, num_cells_types))
         self.half_response = jnp.zeros(num_genes)
         self.hill_coefficient = 2
-
         self.p_value_for_convergence = 1e-3
         self.window_len = 100
-        self.noise_parameters_genes = np.ones(num_genes)
+        self.noise_parameters_genes = np.repeat(noise_amplitude, num_genes)
 
     def run(self):
         adjacency, graph = load_grn(self.interactions_filename, self.adjacency)
@@ -44,7 +44,8 @@ class Sim:
 
         # TODO: there is a loop too much below
         self.regulators_dict = dict(zip(genes, [np.array(np.where(self.adjacency[:, g])[0]) for g in genes]))
-        self.repressive_dict = dict(zip(genes, [self.adjacency[:, g, None].repeat(self.num_cell_types, axis=1) < 0 for g in genes]))
+        self.repressive_dict = dict(
+            zip(genes, [self.adjacency[:, g, None].repeat(self.num_cell_types, axis=1) < 0 for g in genes]))
         # is_repressive = np.expand_dims(self.adjacency[regulators][:, genes] < 0, -1).repeat(self.num_cell_types, axis=-1)
 
         layers = topo_sort_graph_layers(graph)
@@ -54,20 +55,27 @@ class Sim:
         self.simulate_expression_layer_wise(layers, basal_production_rate)
 
     def simulate_expression_layer_wise(self, layers, basal_production_rate):
-        rng_key = jax.random.PRNGKey(0)
+        key = jax.random.PRNGKey(0)
+        key, subkey = jax.random.split(key)
+        subkeys = jax.random.split(subkey, self.num_cell_types)
+
         layers_copy = [np.array(l) for l in deepcopy(layers)]  # TODO: remove deepcopy
         layer = np.array(layers_copy[0])
         self.x = self.x.at[0, layer].set(basal_production_rate[np.array(layer)] / self.decay_lambda)
 
-        # curr_genes_expression = self.x[0]
-        # curr_genes_expression = {k : curr_genes_expression[k] for k in range(len(curr_genes_expression))} # TODO remove this
-        # d_genes, rng_key = jax.vmap(self.simulate_master_layer_vmap, in_axes=(1, 0, None, None))(
-        #     basal_production_rate, curr_genes_expression, layer, rng_key
-        # )
-        # self.x = self.x.at[1:, layer].set(d_genes.T)
-        # self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
+        curr_genes_expression = self.x[0]
+        curr_genes_expression = {k: curr_genes_expression[k] for k in
+                                 range(len(curr_genes_expression))}  # TODO remove this
+        d_genes = jax.vmap(self.simulate_master_layer, in_axes=(1, 0, None, 0))(
+            basal_production_rate, curr_genes_expression, layer, subkeys
+        )
+        self.x = self.x.at[1:, layer].set(d_genes.T)
+        self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
 
         for num_layer, layer in enumerate(layers_copy[1:], start=1):
+            key, subkey = jax.random.split(key)
+            subkeys = jax.random.split(subkey, self.num_cell_types)
+
             half_responses = self.calculate_half_response(tuple(layer), self.mean_expression)
             self.half_response = self.half_response.at[layer].set(half_responses)
             self.x = self.init_concentration(tuple(layer), self.half_response, self.mean_expression, self.x)
@@ -75,32 +83,35 @@ class Sim:
             curr_genes_expression = self.x[0]
             curr_genes_expression = {k: curr_genes_expression[k] for k in
                                      range(len(curr_genes_expression))}  # TODO remove this
-
-            trajectories = jax.vmap(self.simulate_targets, in_axes=(1, 0, None, None, None))(
-                basal_production_rate, curr_genes_expression, self.noise_parameters_genes, layer, rng_key
+            production_rates = jnp.array([self.calculate_production_rate(gene, self.half_response,
+                                                                         self.mean_expression) for gene in
+                                          layer])
+            trajectories = jax.vmap(self.simulate_targets, in_axes=(1, 0, None, None, 0))(
+                production_rates, curr_genes_expression, self.noise_parameters_genes, layer, subkeys
             )
-            self.x = self.x.at[step, layer].set(trajectories.clip(min=0))  # clipping is important!
+            self.x = self.x.at[1:, layer].set(trajectories.T)
             self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
 
-    def simulate_master_layer_vmap(self, basal_production_rate, curr_genes_expression, layer, rng_key):
-        dx, rng_key = jax.vmap(self.euler_maruyama_master, in_axes=(0, 0,0,None))(
+    def simulate_master_layer(self, basal_production_rate, curr_genes_expression, layer, key):
+        subkeys = jax.random.split(key, len(layer))
+        dx = jax.vmap(self.euler_maruyama_master, in_axes=(0, 0, 0, 0))(
             jnp.array([curr_genes_expression[gene] for gene in layer]),
             basal_production_rate.take(jnp.array(layer)),
             self.noise_parameters_genes.take(jnp.array(layer)),
-            rng_key
+            subkeys
         )
-        return dx, rng_key
+        return dx
 
-    def simulate_targets(self, basal_prod_rate, curr_genes_expression, q, layer, rng_key):
-        dx, rng_key = jax.vmap(self.euler_maruyama_targets_scan, in_axes=(0, 0, None, None, None, None))(
+    def simulate_targets(self, production_rates, curr_genes_expression, q, layer, key):
+        subkeys = jax.random.split(key, len(layer))
+        dx = jax.vmap(self.euler_maruyama_targets, in_axes=(0, 0, 0, None, 0))(
             jnp.array([curr_genes_expression[gene] for gene in layer]),
             q.take(jnp.array(layer)),
-            self.half_response,
-            self.mean_expression,
+            production_rates,
             tuple(layer),
-            rng_key
+            subkeys
         )
-        return dx, rng_key
+        return dx
 
     @functools.partial(jax.jit, static_argnums=(0, 1))
     def calculate_half_response(self, layer, mean_expression):
@@ -139,20 +150,22 @@ class Sim:
     def hill_function(self, regulators_concentration, half_response, is_repressive):
         rate = (
                 jnp.power(regulators_concentration, self.hill_coefficient) /
-                (jnp.power(half_response, self.hill_coefficient) + jnp.power(regulators_concentration, self.hill_coefficient))
+                (jnp.power(half_response, self.hill_coefficient) + jnp.power(regulators_concentration,
+                                                                             self.hill_coefficient))
         )
         rate2 = jnp.where(is_repressive, rate, 1 - rate)
         # rate = rate.at[is_repressive].set(1 - rate[is_repressive])
         return rate2
 
     @functools.partial(jax.jit, static_argnums=(0,))
-    def euler_maruyama_master(self, curr_genes_expression, basal_production_rate, q, rng_key: jax.random.PRNGKey):
+    def euler_maruyama_master(self, curr_genes_expression, basal_production_rate, q, key: jax.random.PRNGKey):
 
-        rng_key, key1, key2 = jax.random.split(rng_key, 3)
         production_rates = basal_production_rate
         decays = jnp.multiply(self.decay_lambda, curr_genes_expression)
-        dw_p = jax.random.normal(key1, shape=(self.simulation_time_steps-1,))
-        dw_d = jax.random.normal(key2, shape=(self.simulation_time_steps-1,))
+        key, subkey = jax.random.split(key)
+        dw_p = jax.random.normal(subkey, shape=(self.simulation_time_steps - 1,))
+        key, subkey = jax.random.split(key)
+        dw_d = jax.random.normal(subkey, shape=(self.simulation_time_steps - 1,))
 
         def concentration_forward(curr_concentration, state):
             dw_production, dw_decay = state
@@ -160,39 +173,36 @@ class Sim:
             amplitude_d = q * jnp.power(decays, 0.5)
             noise = jnp.multiply(amplitude_p, dw_production) + jnp.multiply(amplitude_d, dw_decay)
             next_gene_conc = curr_concentration + (0.01 * jnp.subtract(production_rates, decays)) + jnp.power(
-            0.01, 0.5) * noise  # shape=( # #genes,#types)
+                0.01, 0.5) # * noise  # shape=( # #genes,#types)
             next_gene_conc = jnp.clip(next_gene_conc, a_min=0)
             return next_gene_conc, next_gene_conc
 
         all_states = dw_p, dw_d
         gene_trajectory_concentration = jax.lax.scan(concentration_forward, curr_genes_expression, all_states)[1]
-        return gene_trajectory_concentration, rng_key
+        return gene_trajectory_concentration
 
     @functools.partial(jax.jit, static_argnums=(0,))
-    def euler_maruyama_targets_scan(self, curr_genes_expression, layer, half_response, mean_expression,
-                                    q, key):  # TODO takes ages :(
-        rng_key, key1, key2 = jax.random.split(key, 3)
-        dw_p = jax.random.normal(key1, shape=(self.simulation_time_steps - 1,))
-        dw_d = jax.random.normal(key2, shape=(self.simulation_time_steps - 1,))
+    def euler_maruyama_targets(self, curr_genes_expression, q, production_rates, layer, key):
+        key, subkey = jax.random.split(key)
+        dw_p = jax.random.normal(key, shape=(self.simulation_time_steps - 1,))
+        key, subkey = jax.random.split(key)
+        dw_d = jax.random.normal(key, shape=(self.simulation_time_steps - 1,))
 
         def step(carry, state):
             curr_x = carry
             dw_d, dw_p = state
-
-            production_rates = jnp.array([self.calculate_production_rate(gene, half_response, mean_expression) for
-                                          gene in layer]) # TODO problem here with scan
-
             decays = jnp.multiply(self.decay_lambda, curr_genes_expression)
             amplitude_p = q * jnp.power(production_rates, 0.5)
             amplitude_d = q * jnp.power(decays, 0.5)
             noise = jnp.multiply(amplitude_p, dw_p) + jnp.multiply(amplitude_d, dw_d)
-            next_x = curr_x + 0.01 * jnp.subtract(production_rates, decays) + jnp.power(0.01, 0.5) * noise  # shape=(#genes,#types)
+            next_x = curr_x + 0.01 * jnp.subtract(production_rates, decays) + jnp.power(0.01,
+                                                                                        0.5)  # * noise  # shape=(#genes,#types)
             next_x = jnp.clip(next_x, a_min=0)
             return next_x, next_x
 
         all_state = dw_d, dw_p
         gene_trajectory = jax.lax.scan(step, curr_genes_expression, all_state)[1]
-        return gene_trajectory, rng_key
+        return gene_trajectory
 
     def check_for_convergence(self, gene_concentration, concentration_criteria='np_all_close'):
         converged = False
@@ -223,14 +233,17 @@ class Sim:
 
 if __name__ == '__main__':
     start = time()
+
     sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=5)
+
     if is_debugger_active():
         with jax.disable_jit():
             sim.run()
     else:
         sim.run()
-    x = sim.x
-    print(x.shape)
+
+    expr_clean = sim.x
+    print(expr_clean.shape)
     print(f"time: {time() - start}")
-    plt.plot(x.T[0, 1, :])
-    plt.show()
+
+    plot_two_genes(expr_clean.T[0, 44], expr_clean.T[0, 1], expr_clean.T[0, 99])

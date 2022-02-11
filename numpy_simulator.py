@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 from scipy.stats import ttest_ind
 
 from src.load_utils import load_grn, topo_sort_graph_layers, get_basal_production_rate
+from src.zoo_functions import plot_two_genes
 
 np.random.seed(123)
 
@@ -250,9 +251,4 @@ if __name__ == '__main__':
     print(expr_clean.shape)
     print(f"took {time.time() - start} seconds")
 
-    _, axes = plt.subplots(1, 2, figsize=(10, 5))
-    axes[0].plot(expr_clean.T[0, 1, :])
-    axes[0].set_title('Gene 1')
-    axes[1].plot(expr_clean.T[0, 99, :])
-    axes[1].set_title('Gene 99')
-    plt.show()
+    plot_two_genes(expr_clean.T[0, 1], expr_clean.T[0, 99])
