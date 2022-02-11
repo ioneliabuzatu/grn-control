@@ -95,7 +95,6 @@ class Sim:
         half_response = self.half_response[gene]
         hill_function = self.hill_function(mean_expression, half_response, is_repressive)
         rate = np.einsum("r,rt->t", absolute_k, hill_function)
-
         return rate
 
     def hill_function(self, regulators_concentration, half_response, is_repressive):
@@ -251,7 +250,7 @@ if __name__ == '__main__':
     regulators_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Regs_cID_4.txt'
     sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=1000,
               interactions=interactions_filename, regulators=regulators_filename,
-              noise_amplitude=0.1, deterministic=False)
+              noise_amplitude=0.1, deterministic=True)
     sim.run()
     expr_clean = sim. x
     print(expr_clean.shape)
