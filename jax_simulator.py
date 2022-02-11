@@ -36,6 +36,7 @@ class Sim:
         self.p_value_for_convergence = 1e-3
         self.window_len = 100
         self.noise_parameters_genes = np.repeat(noise_amplitude, num_genes)
+        self.dt = 0.01
 
     def run(self):
         adjacency, graph = load_grn(self.interactions_filename, self.adjacency)
@@ -83,7 +84,7 @@ class Sim:
             half_responses = self.calculate_half_response(tuple(layer), self.mean_expression)
             self.half_response = self.half_response.at[layer].set(half_responses)
             self.x = self.init_concentration(tuple(layer), self.half_response, self.mean_expression, self.x)
-            
+
             ax[num_layer].bar([str(g) for g in layer], self.x[0, layer, 0])
 
             curr_genes_expression = self.x[0]
@@ -163,7 +164,6 @@ class Sim:
                                                                              self.hill_coefficient))
         )
         rate2 = jnp.where(is_repressive, 1 - rate, rate)
-        # rate = rate.at[is_repressive].set(1 - rate[is_repressive])
         return rate2
 
     @functools.partial(jax.jit, static_argnums=(0,))
@@ -181,7 +181,8 @@ class Sim:
             amplitude_p = q * jnp.power(production_rates, 0.5)
             amplitude_d = q * jnp.power(decay, 0.5)
             noise = jnp.multiply(amplitude_p, dw_production) + jnp.multiply(amplitude_d, dw_decay)
-            next_gene_conc = curr_concentration + (0.01 * jnp.subtract(production_rates, decay)) # + jnp.power(0.01, 0.5) # * noise  # shape=( # #genes,#types)
+            next_gene_conc = curr_concentration + (self.dt * jnp.subtract(production_rates, decay)) + jnp.power(self.dt,
+                                                                                                                0.5) * noise  # shape=( # #genes,#types)
             next_gene_conc = jnp.clip(next_gene_conc, a_min=0)
             return next_gene_conc, next_gene_conc
 
@@ -203,7 +204,8 @@ class Sim:
             amplitude_p = q * jnp.power(production_rates, 0.5)
             amplitude_d = q * jnp.power(decay, 0.5)
             noise = jnp.multiply(amplitude_p, dw_p) + jnp.multiply(amplitude_d, dw_d)
-            next_x = curr_x + (0.01 * jnp.subtract(production_rates, decay))  #  + jnp.power(0.01, 0.5)  * noise #  shape=(#genes,#types)
+            next_x = curr_x + (self.dt * jnp.subtract(production_rates, decay)) + jnp.power(self.dt,
+                                                                                            0.5) * noise  # # shape=(#genes,#types)
             next_x = jnp.clip(next_x, a_min=0)
             return next_x, next_x
 
