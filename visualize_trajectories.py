@@ -1,10 +1,10 @@
 import experiment_buddy
 import numpy as np
 
-import jit_simulator
+import jax_simulator
 import numpy_simulator
 
-params = {'num_genes': 100, 'num_cells_types': 9, 'num_cells_to_simulate': 5,
+params = {'num_genes': 100, 'num_cells_types': 9, 'num_cells_to_simulate': 50,
           'interactions': 'data/Interaction_cID_4.txt',
           'regulators': 'data/Regs_cID_4.txt',
           'noise_amplitude': 0.1,
@@ -14,7 +14,7 @@ if __name__ == '__main__':
     experiment_buddy.register_defaults(params)
     writer = experiment_buddy.deploy()
 
-    simulator = jit_simulator.Sim(**params)
+    simulator = jax_simulator.Sim(**params)
     # simulator = numpy_simulator.Sim(**params, deterministic=True)
 
     def plot(trajectory):

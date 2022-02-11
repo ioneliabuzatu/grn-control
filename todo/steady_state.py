@@ -256,7 +256,6 @@ class sergio(object):
                 self.sampling_state_ = state
 
         self.scIndices_ = np.random.randint(low=- self.sampling_state_ * self.nSC_, high=0, size=self.nSC_)
-        print(self.scIndices_)
 
     def calculate_required_steps_(self, level, safety_steps=0):
         """
@@ -325,7 +324,7 @@ class sergio(object):
                 allBinRates = self.graph_[g[0].ID]['rates']
 
                 for bIdx, rate in enumerate(allBinRates):
-                    g[bIdx].append_Conc(0) # np.true_divide(rate, self.decayVector_[g[0].ID]))
+                    g[bIdx].append_Conc(np.true_divide(rate, self.decayVector_[g[0].ID]))
 
             else:
                 params = self.graph_[g[0].ID]['params']
@@ -401,14 +400,11 @@ class sergio(object):
                 noise = self.calculate_noise_type(currExp, decay, gID, prod_rate)
                 # curr_dx = self.dt_ * (prod_rate - decay) + np.power(self.dt_, 0.5)  # * noise
                 curr_dx = self.dt_ * (prod_rate - decay)
-                if np.abs(curr_dx).max() > 0.1:
-                    print(np.abs(curr_dx).max())
 
                 delIndices = []
                 for bIDX, gObj in enumerate(g):
                     binID = gObj.binID
                     gObj.append_Conc(gObj.Conc[-1] + curr_dx[bIDX])
-                    print(curr_dx, gObj.Conc[-1] + curr_dx[bIDX])
                     gObj.incrementStep()
 
                     # TODO: no, convergence needed, in steady state simulation we already start from converged region!

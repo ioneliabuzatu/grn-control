@@ -10,9 +10,9 @@ import experiment_buddy
 from steady_state import sergio
 # from sergio_plot_trajectories import sergio
 
-# params = {'num_genes': 100, 'num_cells_types': 9, 'num_cells_to_simulate': 5}
-# experiment_buddy.register_defaults(params)
-# writer = experiment_buddy.deploy()
+params = {'num_genes': 100, 'num_cells_types': 9, 'num_cells_to_simulate': 5}
+experiment_buddy.register_defaults(params)
+writer = experiment_buddy.deploy()
 
 
 def steady_state(number_genes=None,
@@ -33,7 +33,7 @@ def steady_state(number_genes=None,
                  noise_type=noise_type)
     sim.build_graph(input_file_taregts=input_file_targets, input_file_regs=input_file_regs, shared_coop_state=2)
     sim.simulate()
-    # plot_trajectory_from_sim(sim)
+    plot_trajectory_from_sim(sim)
     expression = sim.getExpressions()  # shape(#types, #genes, #trajectories)
     print(expression.shape)
     # expr_add_outlier_genes = sim.outlier_effect(expression, outlier_prob=0.01, mean=0.8, scale=1)
@@ -76,9 +76,10 @@ def plot_trajectory_from_sim(sim):
         for _, layer in layers.items():
             for gene in layer:
                 for cell_type in gene:
-                    if cell_type.Type == "MR":
+                    if cell_type.ID in [44,1,99]:
                         writer.add_scalar(f"gene{cell_type.ID}/type{cell_type.binID}", cell_type.Conc[t], t)
-
+                    # if cell_type.Type == "MR":
+                    #     writer.add_scalar(f"gene{cell_type.ID}/type{cell_type.binID}", cell_type.Conc[t], t)
 
 
 if __name__ == "__main__":
@@ -88,10 +89,10 @@ if __name__ == "__main__":
                  number_sc=300,
                  noise_params=1,
                  decays=0.8,
-                 sampling_state=15,
+                 sampling_state=1,
                  noise_type='dpd',
-                 input_file_targets="SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Interaction_cID_4.txt",
-                 input_file_regs="SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Regs_cID_4.txt")
+                 input_file_targets="../SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Interaction_cID_4.txt",
+                 input_file_regs="../SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Regs_cID_4.txt")
     #
     # differentiated_states(config.filepath_small_dynamics_bifurcation_matrix,
     #                       config.filepath_small_dynamics_targets,
