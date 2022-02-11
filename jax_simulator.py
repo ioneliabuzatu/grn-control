@@ -1,233 +1,257 @@
-"""Jax version of SERGIO steady-state simulator"""
+import functools
+from copy import deepcopy
+from time import time
 
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
 import numpy as np
-from functools import partial
+from scipy.stats import ttest_ind
 
 from src.load_utils import load_grn, topo_sort_graph_layers, get_basal_production_rate
+from src.zoo_functions import is_debugger_active, plot_three_genes
 
 
 class Sim:
 
-    def __init__(self, num_genes, num_cells_types, num_cells_to_simulate, **kwargs):
+    def __init__(self, num_genes: int, num_cells_types: int, num_cells_to_simulate: int, noise_amplitude: float = 1.,
+                 **kwargs):
         self.interactions_filename = 'data/Interaction_cID_4.txt'
         self.regulators_filename = 'data/Regs_cID_4.txt'
         self.num_genes = num_genes
         self.num_cell_types = num_cells_types
         self.num_cells_to_simulate = num_cells_to_simulate
         self.adjacency = np.zeros(shape=(self.num_genes, self.num_genes))
+        self.regulators_dict = dict()
+        self.repressive_dict = dict()
         self.decay_lambda = 0.8
         self.mean_expression = -1 * jnp.ones((num_genes, num_cells_types))
-        # self.sampling_state = 10
-        # self.simulation_time_steps = self.sampling_state * self.num_cells_to_simulate
-        # self.x = np.zeros(shape=(self.simulation_time_steps, num_genes, num_cells_types))
-        self.half_response = np.zeros(num_genes)
+        self.sampling_state = 50
+        self.is_regulator = None
+        self.simulation_time_steps = self.sampling_state * self.num_cells_to_simulate
+        print("sampling time steps: ", self.simulation_time_steps)
+        self.x = jnp.zeros(shape=(self.simulation_time_steps, num_genes, num_cells_types))
+        self.half_response = jnp.zeros(num_genes)
         self.hill_coefficient = 2
-        self.noise_amplitude = jnp.ones(self.num_genes)  # TODO: Redefine according to article
-        self.t_span = (0, 1)
-        self.num_points = 5
+        self.p_value_for_convergence = 1e-3
+        self.window_len = 100
+        self.noise_parameters_genes = np.repeat(noise_amplitude, num_genes)
 
     def run(self):
-        self.adjacency, graph = load_grn(self.interactions_filename, self.adjacency)
-        self.adjacency = jnp.array(self.adjacency)
+        adjacency, graph = load_grn(self.interactions_filename, self.adjacency)
+        self.adjacency = jnp.array(adjacency)
+        regulators, genes = np.where(self.adjacency)
+
+        # TODO: there is a loop too much below
+        self.regulators_dict = dict(zip(genes, [np.array(np.where(self.adjacency[:, g])[0]) for g in genes]))
+        self.repressive_dict = dict(
+            zip(genes, [self.adjacency[:, g, None].repeat(self.num_cell_types, axis=1) < 0 for g in genes]))
+        # is_repressive = np.expand_dims(self.adjacency[regulators][:, genes] < 0, -1).repeat(self.num_cell_types, axis=-1)
+
         layers = topo_sort_graph_layers(graph)
-        basal_production_rate = jnp.array(get_basal_production_rate(self.regulators_filename, self.num_genes,
-                                                                    self.num_cell_types))
-        # Note: basal rate is zero for non-master regulator genes
+        # self.is_regulator = self.adjacency != 0
 
-        # Initialize concentration of master regulators across all cells
-        layer_init_concentration = jax.vmap(self.init_master_reg_one_cell, in_axes=(1, None))(basal_production_rate,
-                                                                                              layers[0])
-        init_concentration_dict = dict(zip(layers[0], layer_init_concentration.T))
-        # Then, initialize concentration of regulated genes layer per layer, across all genes
-        init_mean_expression = {gene: jnp.mean(cell_concentration) for gene, cell_concentration
-                                in init_concentration_dict.items()}
-        for layer in layers[1:]:
-            layer_init_concentration = jax.vmap(self.init_regulated_one_cell, in_axes=(None, None, 0, None))(
-                self.adjacency, init_mean_expression, init_concentration_dict, layer)
-            layer_init_concentration = dict(zip(layer, layer_init_concentration.T))
-            layer_mean_expression = {gene: jnp.mean(cell_concentration) for gene, cell_concentration
-                                     in layer_init_concentration.items()}
-            init_concentration_dict.update(layer_init_concentration)
-            init_mean_expression.update(layer_mean_expression)
+        basal_production_rate = get_basal_production_rate(self.regulators_filename, self.num_genes, self.num_cell_types)
+        self.simulate_expression_layer_wise(layers, basal_production_rate)
 
-        # Finally, simulate concentration trajectories across all cells
+    def simulate_expression_layer_wise(self, layers, basal_production_rate):
+        f, ax = plt.subplots(1, 3, figsize=(10, 10))
+
         key = jax.random.PRNGKey(0)
-        complete_concentration_trajectories = {}
-        mean_expression = {}
-        # initial layer (master regulators)
         key, subkey = jax.random.split(key)
         subkeys = jax.random.split(subkey, self.num_cell_types)
-        complete_master_trajectories = \
-            jax.vmap(self.simulate_single_cell_master_layer, in_axes=(1, None, 0, None, 0))(
-                basal_production_rate, self.noise_amplitude, init_concentration_dict, layers[0], subkeys
-            )
-        complete_concentration_trajectories.update(complete_master_trajectories)
-        mean_expression.update({gene: jnp.mean(cell_concentration) for gene, cell_concentration
-                                in complete_master_trajectories.items()})  # Taking full average for now
-        # following layers (regulated genes)
-        for layer in layers[1:]:
+
+        layers_copy = [np.array(l) for l in deepcopy(layers)]  # TODO: remove deepcopy
+        layer = np.array(layers_copy[0])
+        self.x = self.x.at[0, layer].set(basal_production_rate[np.array(layer)] / self.decay_lambda)
+
+        curr_genes_expression = self.x[0]
+        curr_genes_expression = {k: curr_genes_expression[k] for k in
+                                 range(len(curr_genes_expression))}  # TODO remove this
+        d_genes = jax.vmap(self.simulate_master_layer, in_axes=(1, 0, None, 0))(
+            basal_production_rate, curr_genes_expression, layer, subkeys
+        )
+        self.x = self.x.at[1:, layer].set(d_genes.T)
+        self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
+
+        ax[0].bar([str(g) for g in layers[0]], self.x[0, layer, 0])
+
+        for num_layer, layer in enumerate(layers_copy[1:], start=1):
             key, subkey = jax.random.split(key)
             subkeys = jax.random.split(subkey, self.num_cell_types)
-            complete_layer_trajectories = jax.vmap(self.simulate_single_cell_lower_layer,
-                                                   in_axes=(None, 1, None, None, 0, 0, None, 0))(
-                self.adjacency, basal_production_rate, mean_expression, self.noise_amplitude, init_concentration_dict,
-                complete_concentration_trajectories, layer, subkeys
+
+            half_responses = self.calculate_half_response(tuple(layer), self.mean_expression)
+            self.half_response = self.half_response.at[layer].set(half_responses)
+            self.x = self.init_concentration(tuple(layer), self.half_response, self.mean_expression, self.x)
+            
+            ax[num_layer].bar([str(g) for g in layer], self.x[0, layer, 0])
+
+            curr_genes_expression = self.x[0]
+            curr_genes_expression = {k: curr_genes_expression[k] for k in
+                                     range(len(curr_genes_expression))}  # TODO remove this
+            production_rates = jnp.array([self.calculate_production_rate(gene, self.half_response,
+                                                                         self.mean_expression) for gene in
+                                          layer])
+            trajectories = jax.vmap(self.simulate_targets, in_axes=(1, 0, None, None, 0))(
+                production_rates, curr_genes_expression, self.noise_parameters_genes, layer, subkeys
             )
-            complete_concentration_trajectories.update(complete_layer_trajectories)
-            mean_expression.update({gene: jnp.mean(cell_concentration) for gene, cell_concentration
-                                    in complete_layer_trajectories.items()})  # Taking full average for now
+            self.x = self.x.at[1:, layer].set(trajectories.T)
+            self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
 
-        return complete_concentration_trajectories
+        plt.show()
 
-    # @staticmethod
-    # def get_half_response(gene_adjacency, cell_mean_expression):
-    #     regulators = (gene_adjacency != 0).astype(int)
-    #     return jnp.mean(regulators*cell_mean_expression)
-
-    @partial(jax.jit, static_argnums=(0,))
-    def init_master_reg_one_cell(self, cell_basal_rates, first_layer):
-        """Wrapper to initialize in parallel concentration of master regulators inside 1 cell-type"""
-        layer_init_concentration = jax.vmap(self.init_master_regulator)(cell_basal_rates.take(jnp.array(first_layer)))
-        return layer_init_concentration
-
-    @partial(jax.jit, static_argnums=(0,))
-    def init_regulated_one_cell(self, adjacency, init_mean_expression, init_concentration_dict, layer):
-        """Wrapper to initialize in parallel concentration of regulated genes inside 1 cell-type"""
-        layer_init_concentration = jax.vmap(self.init_regulated, in_axes=(1, None, None))(
-            adjacency.take(jnp.array(layer), axis=1), init_mean_expression, init_concentration_dict
+    def simulate_master_layer(self, basal_production_rate, curr_genes_expression, layer, key):
+        subkeys = jax.random.split(key, len(layer))
+        dx = jax.vmap(self.euler_maruyama_master, in_axes=(0, 0, 0, 0))(
+            jnp.array([curr_genes_expression[gene] for gene in layer]),
+            basal_production_rate.take(jnp.array(layer)),
+            self.noise_parameters_genes.take(jnp.array(layer)),
+            subkeys
         )
-        return layer_init_concentration
+        return dx
 
-    def init_master_regulator(self, gene_basal_rate):
-        """Initialization for an individual master regulator only depend on basal rate"""
-        return gene_basal_rate/self.decay_lambda
-
-    def init_regulated(self, gene_adjacency, init_mean_expression, concentration_dict):
-        """Initialization of a regulated gene, with dependencies on its regulators"""
-        reduced_gene_adjacency, half_response, reduced_regulators_concentration =\
-            self.reduce_ind_for_hill_fn(gene_adjacency, init_mean_expression, concentration_dict)
-        return self.hill_functions_sum(reduced_gene_adjacency, half_response, reduced_regulators_concentration
-                                       )/self.decay_lambda
-
-    @staticmethod
-    def reduce_ind_for_hill_fn(gene_adjacency, mean_expression_dict, concentration_dict):
-        """Helper fn for production rate  calculation, modeled as hill fn.
-        Filter out multiple 0 entries from adjacency graph. Done outside main function in order to scan
-        the main function without redoing this step each time."""
-
-        # # Damn, can't filter out zero entries because of jax jit/vmap size compliance requirements
-        # nonzero_indices = jnp.nonzero(gene_adjacency)
-        # reduced_gene_adjacency = jnp.take(gene_adjacency, nonzero_indices)
-        # reduced_half_response = jnp.take(half_response, nonzero_indices)
-        # reduced_regulators_concentration = jnp.array([concentration_dict[i] for i in nonzero_indices])
-
-        # Let's take regulators indices then
-        kept_indices = [int(k) for k in concentration_dict]
-        reduced_gene_adjacency = jnp.take(gene_adjacency, jnp.array(kept_indices))
-        # reduced_mean_expression = jnp.take(mean_expression, jnp.array(kept_indices))
-        reduced_half_response = jnp.array([mean_expression_dict[i] for i in kept_indices])
-        reduced_regulators_concentration = jnp.array([concentration_dict[i] for i in kept_indices])
-        # TODO: make sure half_response has no dependency over current gene, despited being noted h_{ij}
-
-        return reduced_gene_adjacency, reduced_half_response, reduced_regulators_concentration
-
-    def hill_functions_sum(self, reduced_gene_adjacency, reduced_half_response, reduced_regulators_concentration):
-        """Retrieve the sum over Hill functions (activator and repressor) that is used in production rate calculation"""
-
-        common = jnp.power(reduced_regulators_concentration, self.hill_coefficient)
-        rate = common / (jnp.power(reduced_half_response, self.hill_coefficient) + common)
-
-        activator_hill = reduced_gene_adjacency*rate  # Will be zero where reduced_gene_adjacency is zero
-        repressor_hill = jnp.abs(reduced_gene_adjacency) * (1-rate)
-
-        return jnp.sum(jnp.where(reduced_gene_adjacency >= 0, activator_hill, repressor_hill))
-
-    def simulate_single_cell_master_layer(self, basal_rate, noise_amplitude, init_concentration, layer, key):
-        """Simulation process for a master regulator, for which production rate only depends on basal rate"""
+    def simulate_targets(self, production_rates, curr_genes_expression, q, layer, key):
         subkeys = jax.random.split(key, len(layer))
-        master_regulators_full_concentration = \
-            jax.vmap(self.euler_maruyama_master, in_axes=(0, 0, 0, 0))(
-                jnp.array([init_concentration[gene] for gene in layer]),
-                basal_rate.take(jnp.array(layer)), noise_amplitude.take(jnp.array(layer)),
-                subkeys
-            )
-        return dict(zip(layer, master_regulators_full_concentration))
+        dx = jax.vmap(self.euler_maruyama_targets, in_axes=(0, 0, 0, None, 0))(
+            jnp.array([curr_genes_expression[gene] for gene in layer]),
+            q.take(jnp.array(layer)),
+            production_rates,
+            tuple(layer),
+            subkeys
+        )
+        return dx
 
-    def simulate_single_cell_lower_layer(self, gene_adjacency, basal_rate, mean_expression, noise_amplitude,
-                                         init_concentration, full_concentration_dict, layer, key):
-        """Simulation process for regulated genes, for which production rate has dependencies over
-         regulator concentrations"""
-        subkeys = jax.random.split(key, len(layer))
-        layer_regulators_full_concentration = \
-            jax.vmap(self.euler_maruyama_lower, in_axes=(0, 1, 0, None, 0, None, 0))(
-                jnp.array([init_concentration[gene] for gene in layer]),
-                gene_adjacency.take(jnp.array(layer), axis=1),
-                basal_rate.take(jnp.array(layer)), mean_expression, noise_amplitude.take(jnp.array(layer)),
-                full_concentration_dict, subkeys
-            )
+    @functools.partial(jax.jit, static_argnums=(0, 1))
+    def calculate_half_response(self, layer, mean_expression):
+        half_responses = []
+        for gene in layer:
+            regulators = self.regulators_dict[gene]
+            mean_expression_per_cells_regulators_wise = mean_expression[regulators]
+            half_response = np.mean(mean_expression_per_cells_regulators_wise)
+            half_responses.append(half_response)
+        return half_responses
 
-        return dict(zip(layer, layer_regulators_full_concentration))
+    @functools.partial(jax.jit, static_argnums=(0, 1))
+    def init_concentration(self, layer: list, half_response: np.ndarray, mean_expression: np.ndarray, x):
+        """ Init concentration genes; Note: calculate_half_response should be run before this method """
+        rates = [self.calculate_production_rate(gene, half_response, mean_expression) for gene in layer]
+        return x.at[0, layer].set(rates)
 
-    @partial(jax.jit, static_argnums=(0,))
-    def euler_maruyama_master(self, x0, basal_rate, noise_amplitude, key):
-        """Integration method: Euler Maruyama with Ito scheme"""
-        delta_t = (self.t_span[1] - self.t_span[0]) / self.num_points
+    @functools.partial(jax.jit, static_argnums=(0, 1))
+    def calculate_production_rate(self, gene, half_response, mean_expression):
+        # regulators = np.where(self.adjacency[:, gene] != 0)
+        # regulators = self.adjacency[:, gene] != 0
+        regulators = self.regulators_dict[gene]
+
+        mean_expression = mean_expression[regulators]
+
+        absolute_k = jnp.abs(self.adjacency[regulators][:, gene])
+
+        half_response = half_response[gene]
+        is_repressive = self.repressive_dict[gene]
+        is_repressive_ = is_repressive[regulators]
+
+        hill_function = self.hill_function(mean_expression, half_response, is_repressive_)
+        rate = jnp.einsum("r,rt->t", absolute_k, hill_function)
+        return rate
+
+    def hill_function(self, regulators_concentration, half_response, is_repressive):
+        rate = (
+                jnp.power(regulators_concentration, self.hill_coefficient) /
+                (jnp.power(half_response, self.hill_coefficient) + jnp.power(regulators_concentration,
+                                                                             self.hill_coefficient))
+        )
+        rate2 = jnp.where(is_repressive, rate, 1 - rate)
+        # rate = rate.at[is_repressive].set(1 - rate[is_repressive])
+        return rate2
+
+    @functools.partial(jax.jit, static_argnums=(0,))
+    def euler_maruyama_master(self, curr_genes_expression, basal_production_rate, q, key: jax.random.PRNGKey):
+
+        production_rates = basal_production_rate
+        decays = jnp.multiply(self.decay_lambda, curr_genes_expression)
         key, subkey = jax.random.split(key)
-        W_alfa = jnp.sqrt(delta_t) * jax.random.normal(subkey, shape=(self.num_points,))
+        dw_p = jax.random.normal(subkey, shape=(self.simulation_time_steps - 1,))
         key, subkey = jax.random.split(key)
-        W_beta = jnp.sqrt(delta_t) * jax.random.normal(subkey, shape=(self.num_points,))
+        dw_d = jax.random.normal(subkey, shape=(self.simulation_time_steps - 1,))
 
-        def concentration_forward(carry, state):
-            """ Forward concentration trajectory for a given gene"""
-            current_x = carry
-            delta_W_alfa, delta_W_beta = state
-            P = basal_rate # Production rate
-            print(P.shape)
-            next_x = current_x + (P - self.decay_lambda * current_x)*delta_t +\
-                     noise_amplitude * jnp.sqrt(P) * delta_W_alfa +\
-                     noise_amplitude * jnp.sqrt(self.decay_lambda * current_x) * delta_W_beta
+        def concentration_forward(curr_concentration, state):
+            dw_production, dw_decay = state
+            amplitude_p = q * jnp.power(production_rates, 0.5)
+            amplitude_d = q * jnp.power(decays, 0.5)
+            noise = jnp.multiply(amplitude_p, dw_production) + jnp.multiply(amplitude_d, dw_decay)
+            next_gene_conc = curr_concentration + (0.01 * jnp.subtract(production_rates, decays)) + jnp.power(
+                0.01, 0.5) # * noise  # shape=( # #genes,#types)
+            next_gene_conc = jnp.clip(next_gene_conc, a_min=0)
+            return next_gene_conc, next_gene_conc
+
+        all_states = dw_p, dw_d
+        gene_trajectory_concentration = jax.lax.scan(concentration_forward, curr_genes_expression, all_states)[1]
+        return gene_trajectory_concentration
+
+    @functools.partial(jax.jit, static_argnums=(0,))
+    def euler_maruyama_targets(self, curr_genes_expression, q, production_rates, layer, key):
+        key, subkey = jax.random.split(key)
+        dw_p = jax.random.normal(key, shape=(self.simulation_time_steps - 1,))
+        key, subkey = jax.random.split(key)
+        dw_d = jax.random.normal(key, shape=(self.simulation_time_steps - 1,))
+
+        def step(carry, state):
+            curr_x = carry
+            dw_d, dw_p = state
+            decays = jnp.multiply(self.decay_lambda, curr_genes_expression)
+            amplitude_p = q * jnp.power(production_rates, 0.5)
+            amplitude_d = q * jnp.power(decays, 0.5)
+            noise = jnp.multiply(amplitude_p, dw_p) + jnp.multiply(amplitude_d, dw_d)
+            next_x = curr_x + 0.01 * jnp.subtract(production_rates, decays) + jnp.power(0.01,
+                                                                                        0.5)  # * noise  # shape=(#genes,#types)
             next_x = jnp.clip(next_x, a_min=0)
             return next_x, next_x
 
-        all_state = W_alfa, W_beta
-        gene_full_concentration = jax.lax.scan(concentration_forward, x0, all_state)[1]
-        return gene_full_concentration
+        all_state = dw_d, dw_p
+        gene_trajectory = jax.lax.scan(step, curr_genes_expression, all_state)[1]
+        return gene_trajectory
 
-    @partial(jax.jit, static_argnums=(0,))
-    def euler_maruyama_lower(self, x0, gene_adjacency, basal_rate, mean_expression, noise_amplitude,
-                             concentration_dict, key):
-        """Integration method: Euler Maruyama with Ito scheme"""
-        delta_t = (self.t_span[1] - self.t_span[0]) / self.num_points
-        key, subkey = jax.random.split(key)
-        W_alfa = jnp.sqrt(delta_t) * jax.random.normal(subkey, shape=(self.num_points,))
-        key, subkey = jax.random.split(key)
-        W_beta = jnp.sqrt(delta_t) * jax.random.normal(subkey, shape=(self.num_points,))
+    def check_for_convergence(self, gene_concentration, concentration_criteria='np_all_close'):
+        converged = False
 
-        reduced_gene_adjacency, reduced_half_response, reduced_regulators_concentration = \
-            self.reduce_ind_for_hill_fn(gene_adjacency, mean_expression, concentration_dict)
+        if concentration_criteria == 't_test':
+            sample1 = gene_concentration[-2 * self.window_len:-1 * self.window_len]
+            sample2 = gene_concentration[-1 * self.window_len:]
+            _, p = ttest_ind(sample1, sample2)
+            if p >= self.p_value_for_convergence:
+                converged = True
 
-        def concentration_forward(carry, state):
-            """ Forward concentration trajectory for a given gene"""
-            current_x = carry
-            current_reg_concentration, delta_W_alfa, delta_W_beta = state
-            P = self.hill_functions_sum(reduced_gene_adjacency, reduced_half_response,  # Production rate
-                                        current_reg_concentration) + basal_rate
-            next_x = current_x + (P - self.decay_lambda * current_x)*delta_t +\
-                noise_amplitude * jnp.sqrt(P) * delta_W_alfa +\
-                noise_amplitude * jnp.sqrt(self.decay_lambda * current_x) * delta_W_beta
-            next_x = jnp.clip(next_x, a_min=0)
-            return next_x, next_x
+        elif concentration_criteria == 'mean':
+            abs_mean_gene = np.abs(np.mean(gene_concentration[-self.window_len:]))
+            if abs_mean_gene <= self.p_value_for_convergence:
+                converged = True
 
-        all_state = reduced_regulators_concentration.T, W_alfa, W_beta
-        gene_full_concentration = jax.lax.scan(concentration_forward, x0, all_state)[1]
-        return gene_full_concentration
+        elif concentration_criteria == 'np_all_close':
+            converged = np.allclose(gene_concentration[-2 * self.window_len:-1 * self.window_len],
+                                    gene_concentration[-self.window_len:],
+                                    atol=self.p_value_for_convergence)
+
+        return converged
+
+    def add_technical_noise(self):
+        """ sequencing noise """
+        raise NotImplementedError
 
 
 if __name__ == '__main__':
-    import time
-    start = time.time()
-    trajectories = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=7).run()  # return complete
-    print(len(trajectories), trajectories[0].shape)  # trajectories for all genes across all cells
-    print(f"took {time.time() - start}")
+    start = time()
+
+    sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=5)
+
+    if is_debugger_active():
+        with jax.disable_jit():
+            sim.run()
+    else:
+        sim.run()
+
+    expr_clean = sim.x
+    print(expr_clean.shape)
+    print(f"time: {time() - start}")
+
+    plot_three_genes(expr_clean.T[0, 44], expr_clean.T[0, 1], expr_clean.T[0, 99])

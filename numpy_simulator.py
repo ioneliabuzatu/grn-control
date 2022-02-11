@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 from scipy.stats import ttest_ind
 
 from src.load_utils import load_grn, topo_sort_graph_layers, get_basal_production_rate
-from src.zoo_functions import plot_two_genes
+from src.zoo_functions import plot_three_genes
 
 np.random.seed(123)
 
@@ -45,12 +45,16 @@ class Sim:
     def simulate_expression_layer_wise(self, layers, basal_production_rate):
         random_sampling_state = np.random.randint(low=-self.simulation_time_steps, high=0,
                                                   size=self.num_cells_to_simulate)
+        f, ax = plt.subplots(1, 3, figsize=(10, 10))
         layers_copy = deepcopy(layers)
         for num_layer, layer in enumerate(layers_copy):
             if num_layer != 0:  # not the master layer
                 self.calculate_half_response(layer)
             self.init_concentration(layer, basal_production_rate)
             print("layer: ", num_layer)
+
+            ax[num_layer].bar([str(g) for g in layer], self.x[0, layer, 0])
+
             production_rates = [self.calculate_production_rate(gene, basal_production_rate) for gene in layer]
             for step in range(1, self.simulation_time_steps):
                 curr_genes_expression = self.x[step - 1, layer]
@@ -62,6 +66,8 @@ class Sim:
             # self.mean_expression[layer] = np.mean(self.x[random_sampling_state][:, layer], axis=0)
             # self._x[:, layer] = self.x[random_sampling_state][:, layer]
             self.mean_expression[layer] = np.mean(self.x[:, layer], axis=0)
+
+        plt.show()
 
     def calculate_half_response(self, layer):
 
@@ -251,4 +257,4 @@ if __name__ == '__main__':
     print(expr_clean.shape)
     print(f"took {time.time() - start} seconds")
 
-    plot_two_genes(expr_clean.T[0, 1], expr_clean.T[0, 99])
+    # plot_three_genes(expr_clean.T[0,44], expr_clean.T[0, 1], expr_clean.T[0, 99])
