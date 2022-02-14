@@ -14,10 +14,13 @@ from src.zoo_functions import is_debugger_active, plot_three_genes
 
 class Sim:
 
-    def __init__(self, num_genes: int, num_cells_types: int, num_cells_to_simulate: int, noise_amplitude: float = 1.,
-                 **kwargs):
-        self.interactions_filename = 'data/Interaction_cID_4.txt'
-        self.regulators_filename = 'data/Regs_cID_4.txt'
+    def __init__(self, num_genes: int, num_cells_types: int, num_cells_to_simulate: int,
+                 interactions_filepath: str, regulators_filepath: str,
+                 simulation_num_steps: int,
+                 noise_amplitude: float = 1., **kwargs):
+
+        self.interactions_filename = interactions_filepath
+        self.regulators_filename = regulators_filepath
         self.num_genes = num_genes
         self.num_cell_types = num_cells_types
         self.num_cells_to_simulate = num_cells_to_simulate
@@ -28,9 +31,9 @@ class Sim:
         self.mean_expression = -1 * jnp.ones((num_genes, num_cells_types))
         self.sampling_state = 50
         self.is_regulator = None
-        self.simulation_time_steps = self.sampling_state * self.num_cells_to_simulate
-        print("sampling time steps: ", self.simulation_time_steps)
-        self.x = jnp.zeros(shape=(self.simulation_time_steps, num_genes, num_cells_types))
+        self.simulation_num_steps = simulation_num_steps
+        print("simulation num step per trajectories: ", self.simulation_num_steps)
+        self.x = jnp.zeros(shape=(self.simulation_num_steps, num_genes, num_cells_types))
         self.half_response = jnp.zeros(num_genes)
         self.hill_coefficient = 2
         self.p_value_for_convergence = 1e-3
@@ -47,17 +50,13 @@ class Sim:
         self.regulators_dict = dict(zip(genes, [np.array(np.where(self.adjacency[:, g])[0]) for g in genes]))
         self.repressive_dict = dict(
             zip(genes, [self.adjacency[:, g, None].repeat(self.num_cell_types, axis=1) < 0 for g in genes]))
-        # is_repressive = np.expand_dims(self.adjacency[regulators][:, genes] < 0, -1).repeat(self.num_cell_types, axis=-1)
 
         layers = topo_sort_graph_layers(graph)
-        # self.is_regulator = self.adjacency != 0
-
         basal_production_rate = get_basal_production_rate(self.regulators_filename, self.num_genes, self.num_cell_types)
+
         self.simulate_expression_layer_wise(layers, basal_production_rate)
 
     def simulate_expression_layer_wise(self, layers, basal_production_rate):
-        f, ax = plt.subplots(1, 3, figsize=(10, 10))
-
         key = jax.random.PRNGKey(0)
         key, subkey = jax.random.split(key)
         subkeys = jax.random.split(subkey, self.num_cell_types)
@@ -75,8 +74,6 @@ class Sim:
         self.x = self.x.at[1:, layer].set(d_genes.T)
         self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
 
-        ax[0].bar([str(g) for g in layers[0]], self.x[0, layer, 0])
-
         for num_layer, layer in enumerate(layers_copy[1:], start=1):
             key, subkey = jax.random.split(key)
             subkeys = jax.random.split(subkey, self.num_cell_types)
@@ -84,8 +81,6 @@ class Sim:
             half_responses = self.calculate_half_response(tuple(layer), self.mean_expression)
             self.half_response = self.half_response.at[layer].set(half_responses)
             self.x = self.init_concentration(tuple(layer), self.half_response, self.mean_expression, self.x)
-
-            ax[num_layer].bar([str(g) for g in layer], self.x[0, layer, 0])
 
             curr_genes_expression = self.x[0]
             curr_genes_expression = {k: curr_genes_expression[k] for k in
@@ -99,7 +94,6 @@ class Sim:
             self.x = self.x.at[1:, layer].set(trajectories.T)
             self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
 
-        plt.show()
 
     def simulate_master_layer(self, basal_production_rate, curr_genes_expression, layer, key):
         subkeys = jax.random.split(key, len(layer))
@@ -141,18 +135,12 @@ class Sim:
 
     @functools.partial(jax.jit, static_argnums=(0, 1))
     def calculate_production_rate(self, gene, half_response, mean_expression):
-        # regulators = np.where(self.adjacency[:, gene] != 0)
-        # regulators = self.adjacency[:, gene] != 0
         regulators = self.regulators_dict[gene]
-
         mean_expression = mean_expression[regulators]
-
         absolute_k = jnp.abs(self.adjacency[regulators][:, gene])
-
         half_response = half_response[gene]
         is_repressive = self.repressive_dict[gene]
         is_repressive_ = is_repressive[regulators]
-
         hill_function = self.hill_function(mean_expression, half_response, is_repressive_)
         rate = jnp.einsum("r,rt->t", absolute_k, hill_function)
         return rate
@@ -168,12 +156,11 @@ class Sim:
 
     @functools.partial(jax.jit, static_argnums=(0,))
     def euler_maruyama_master(self, curr_genes_expression, basal_production_rate, q, key: jax.random.PRNGKey):
-
         production_rates = basal_production_rate
         key, subkey = jax.random.split(key)
-        dw_p = jax.random.normal(subkey, shape=(self.simulation_time_steps - 1,))
+        dw_p = jax.random.normal(subkey, shape=(self.simulation_num_steps - 1,))
         key, subkey = jax.random.split(key)
-        dw_d = jax.random.normal(subkey, shape=(self.simulation_time_steps - 1,))
+        dw_d = jax.random.normal(subkey, shape=(self.simulation_num_steps - 1,))
 
         def concentration_forward(curr_concentration, state):
             dw_production, dw_decay = state
@@ -193,9 +180,9 @@ class Sim:
     @functools.partial(jax.jit, static_argnums=(0,))
     def euler_maruyama_targets(self, curr_genes_expression, q, production_rates, layer, key):
         key, subkey = jax.random.split(key)
-        dw_p = jax.random.normal(key, shape=(self.simulation_time_steps - 1,))
+        dw_p = jax.random.normal(key, shape=(self.simulation_num_steps - 1,))
         key, subkey = jax.random.split(key)
-        dw_d = jax.random.normal(key, shape=(self.simulation_time_steps - 1,))
+        dw_d = jax.random.normal(key, shape=(self.simulation_num_steps - 1,))
 
         def step(carry, state):
             curr_x = carry
@@ -243,7 +230,11 @@ class Sim:
 if __name__ == '__main__':
     start = time()
 
-    sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=20)
+    sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=20,
+              interactions_filepath="data/Interaction_cID_4.txt",
+              regulators_filepath="data/Regs_cID_4.txt",
+              simulation_num_steps=100,
+              )
 
     if is_debugger_active():
         with jax.disable_jit():
