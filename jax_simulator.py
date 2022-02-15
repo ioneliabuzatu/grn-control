@@ -44,7 +44,10 @@ class Sim:
         self.window_len = 100
         self.dt = 0.01
 
-    def run(self, actions=None):  # TODO this could be called step instead
+        self.layers = None
+        self.basal_production_rates = None
+
+    def build(self):
         adjacency, graph = load_grn_jax(self.interactions_filename, self.adjacency)
         self.adjacency = jnp.array(adjacency)
         regulators, genes = np.where(self.adjacency)
@@ -54,27 +57,29 @@ class Sim:
         self.repressive_dict = dict(
             zip(genes, [self.adjacency[:, g, None].repeat(self.num_cell_types, axis=1) < 0 for g in genes]))
 
-        layers = topo_sort_graph_layers(graph)
-        basal_production_rate = get_basal_production_rate(self.regulators_filename, self.num_genes, self.num_cell_types)
+        self.layers = topo_sort_graph_layers(graph)
+        self.basal_production_rates = get_basal_production_rate(self.regulators_filename, self.num_genes,
+                                                           self.num_cell_types)
 
-        self.simulate_expression_layer_wise(layers, basal_production_rate)
-
+    def run_one_rollout(self, actions=None):
+        """return the gene expression of shape [samples, genes]"""
+        self.simulate_expression_layer_wise(actions)
         return np.concatenate(self.x, axis=1).T  # shape=cells,genes
 
-    def simulate_expression_layer_wise(self, layers, basal_production_rate):
+    def simulate_expression_layer_wise(self, actions):  # TODO where to add the actions, at the start or at the end of a rollout?
         key = jax.random.PRNGKey(0)
         key, subkey = jax.random.split(key)
         subkeys = jax.random.split(subkey, self.num_cell_types)
 
-        layers_copy = [np.array(l) for l in deepcopy(layers)]  # TODO: remove deepcopy
+        layers_copy = [np.array(l) for l in deepcopy(self.layers)]  # TODO: remove deepcopy
         layer = np.array(layers_copy[0])
-        self.x = self.x.at[0, layer].set(basal_production_rate[np.array(layer)] / self.decay_lambda)
+        self.x = self.x.at[0, layer].set(self.basal_production_rates[np.array(layer)] / self.decay_lambda)
 
         curr_genes_expression = self.x[0]
         curr_genes_expression = {k: curr_genes_expression[k] for k in
                                  range(len(curr_genes_expression))}  # TODO remove this
         d_genes = jax.vmap(self.simulate_master_layer, in_axes=(1, 0, None, 0))(
-            basal_production_rate, curr_genes_expression, layer, subkeys
+            self.basal_production_rates, curr_genes_expression, layer, subkeys
         )
         self.x = self.x.at[1:, layer].set(d_genes.T)
         self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
@@ -239,12 +244,13 @@ if __name__ == '__main__':
               regulators_filepath="data/Regs_cID_4.txt",
               simulation_num_steps=100,
               )
+    sim.build()
 
     if is_debugger_active():
         with jax.disable_jit():
-            sim.run()
+            sim.run_one_rollout()
     else:
-        sim.run()
+        sim.run_one_rollout()
 
     expr_clean = sim.x
     print(expr_clean.shape)
