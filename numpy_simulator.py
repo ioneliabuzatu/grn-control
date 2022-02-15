@@ -36,6 +36,8 @@ class Sim:
         self.noise_parameters_genes = np.repeat(noise_amplitude, num_genes)
         self._x = np.zeros(shape=(num_cells_to_simulate, num_genes, num_cells_types))
 
+        self.hlines = [44,1,99]
+
     def run(self):
         self.adjacency, graph = load_grn(self.interactions_filename, self.adjacency)
         layers = topo_sort_graph_layers(graph)
@@ -80,7 +82,7 @@ class Sim:
     def init_concentration(self, layer: list, basal_production_rate):
         """ Init concentration genes; Note: calculate_half_response should be run before this method """
         rates = np.array([self.calculate_production_rate(gene, basal_production_rate) for gene in layer])
-        self.x[0, layer] = rates / self.decay_lambda
+        self.x[0, layer] = 1 # rates / self.decay_lambda
 
     def calculate_production_rate(self, gene, basal_production_rate):
         gene_basal_production = basal_production_rate[gene]
@@ -106,6 +108,13 @@ class Sim:
         return rate
 
     def euler_maruyama(self, production_rates, curr_genes_expression, layer):
+        if 44 in layer:
+            self.hlines[0] = np.divide(production_rates, 0.8)[layer.index(44), 0]
+        if 1 in layer:
+            self.hlines[1] = np.divide(production_rates, 0.8)[layer.index(1), 0]
+        if 99 in layer:
+            self.hlines[2] = np.divide(production_rates, 0.8)[layer.index(99), 0]
+
         decays = np.multiply(self.decay_lambda, curr_genes_expression)
         dw_p = np.random.normal(size=curr_genes_expression.shape) # np.random.normal(1)*jnp.ones_like(
         # curr_genes_expression)
@@ -116,7 +125,7 @@ class Sim:
         if self.deterministic:
             d_genes = 0.01 * np.subtract(production_rates, decays)
             return d_genes
-        d_genes = 0.01 * np.subtract(production_rates, decays) + np.power(0.01, 0.5) * noise  # shape=(#genes,#types)
+        d_genes = 0.01 * np.subtract(production_rates, decays) # + np.power(0.01, 0.5) * noise  # shape=(#genes,#types)
         return d_genes
 
     def check_for_convergence(self, gene_concentration, concentration_criteria='np_all_close'):
@@ -248,7 +257,7 @@ if __name__ == '__main__':
     start = time.time()
     interactions_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Interaction_cID_4.txt'
     regulators_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Regs_cID_4.txt'
-    sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=1000,
+    sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=100,
               interactions=interactions_filename, regulators=regulators_filename,
               noise_amplitude=1, deterministic=False)
     sim.run()
@@ -256,4 +265,4 @@ if __name__ == '__main__':
     print(expr_clean.shape)
     print(f"took {time.time() - start} seconds")
 
-    plot_three_genes(expr_clean.T[0,44], expr_clean.T[0, 1], expr_clean.T[0, 99])
+    plot_three_genes(expr_clean.T[0,44], expr_clean.T[0, 1], expr_clean.T[0, 99], hlines=sim.hlines)
