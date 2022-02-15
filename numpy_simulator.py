@@ -250,10 +250,10 @@ if __name__ == '__main__':
     regulators_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Regs_cID_4.txt'
     sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=1000,
               interactions=interactions_filename, regulators=regulators_filename,
-              noise_amplitude=0.1, deterministic=True)
+              noise_amplitude=1, deterministic=False)
     sim.run()
     expr_clean = sim. x
     print(expr_clean.shape)
     print(f"took {time.time() - start} seconds")
 
-    # plot_three_genes(expr_clean.T[0,44], expr_clean.T[0, 1], expr_clean.T[0, 99])
+    plot_three_genes(expr_clean.T[0,44], expr_clean.T[0, 1], expr_clean.T[0, 99])

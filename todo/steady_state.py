@@ -398,8 +398,7 @@ class sergio(object):
                 prod_rate = self.calculate_prod_rate_(g, level)  # 1 * #currBins
                 decay = np.multiply(self.decayVector_[gID], currExp)
                 noise = self.calculate_noise_type(currExp, decay, gID, prod_rate)
-                # curr_dx = self.dt_ * (prod_rate - decay) + np.power(self.dt_, 0.5)  # * noise
-                curr_dx = self.dt_ * (prod_rate - decay)
+                curr_dx = self.dt_ * (prod_rate - decay) + np.power(self.dt_, 0.5) * noise
 
                 delIndices = []
                 for bIDX, gObj in enumerate(g):

@@ -81,7 +81,6 @@ def plot_trajectory_from_sim(sim):
                     # if cell_type.Type == "MR":
                     #     writer.add_scalar(f"gene{cell_type.ID}/type{cell_type.binID}", cell_type.Conc[t], t)
 
-
 if __name__ == "__main__":
     start = time.time()
     steady_state(number_genes=100,
