@@ -8,41 +8,44 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import ttest_ind
 
-from src.load_utils import load_grn, topo_sort_graph_layers, get_basal_production_rate
+from src.load_utils import load_grn_jax, topo_sort_graph_layers, get_basal_production_rate
 from src.zoo_functions import is_debugger_active, plot_three_genes
 
 
 class Sim:
 
-    def __init__(self, num_genes: int, num_cells_types: int, num_cells_to_simulate: int,
+    def __init__(self, num_genes: int, num_cells_types: int,
                  interactions_filepath: str, regulators_filepath: str,
-                 simulation_num_steps: int,
-                 noise_amplitude: float = 1., **kwargs):
+                 simulation_num_steps: int, num_samples_from_trajectory: int = None,
+                 noise_amplitude: float = 1.,
+                 add_technical_noise: bool = True,
+                 **kwargs):
 
-        self.interactions_filename = interactions_filepath
-        self.regulators_filename = regulators_filepath
         self.num_genes = num_genes
         self.num_cell_types = num_cells_types
-        self.num_cells_to_simulate = num_cells_to_simulate
-        self.adjacency = np.zeros(shape=(self.num_genes, self.num_genes))
+        self.interactions_filename = interactions_filepath
+        self.regulators_filename = regulators_filepath
+        self.simulation_num_steps = simulation_num_steps
+        self.num_samples_from_trajectory = num_samples_from_trajectory  # use in future when trajectory is long 1M steps
+        self.noise_parameters_genes = np.repeat(noise_amplitude, num_genes)
+        self.add_technical_noise = add_technical_noise
+
+        self.adjacency = jnp.zeros(shape=(self.num_genes, self.num_genes))
         self.regulators_dict = dict()
         self.repressive_dict = dict()
         self.decay_lambda = 0.8
         self.mean_expression = -1 * jnp.ones((num_genes, num_cells_types))
-        self.sampling_state = 50
         self.is_regulator = None
-        self.simulation_num_steps = simulation_num_steps
         print("simulation num step per trajectories: ", self.simulation_num_steps)
         self.x = jnp.zeros(shape=(self.simulation_num_steps, num_genes, num_cells_types))
         self.half_response = jnp.zeros(num_genes)
         self.hill_coefficient = 2
         self.p_value_for_convergence = 1e-3
         self.window_len = 100
-        self.noise_parameters_genes = np.repeat(noise_amplitude, num_genes)
         self.dt = 0.01
 
-    def run(self):
-        adjacency, graph = load_grn(self.interactions_filename, self.adjacency)
+    def run(self, actions=None):  # TODO this could be called step instead
+        adjacency, graph = load_grn_jax(self.interactions_filename, self.adjacency)
         self.adjacency = jnp.array(adjacency)
         regulators, genes = np.where(self.adjacency)
 
@@ -55,6 +58,8 @@ class Sim:
         basal_production_rate = get_basal_production_rate(self.regulators_filename, self.num_genes, self.num_cell_types)
 
         self.simulate_expression_layer_wise(layers, basal_production_rate)
+
+        return np.concatenate(self.x, axis=1).T  # shape=cells,genes
 
     def simulate_expression_layer_wise(self, layers, basal_production_rate):
         key = jax.random.PRNGKey(0)
@@ -93,7 +98,6 @@ class Sim:
             )
             self.x = self.x.at[1:, layer].set(trajectories.T)
             self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
-
 
     def simulate_master_layer(self, basal_production_rate, curr_genes_expression, layer, key):
         subkeys = jax.random.split(key, len(layer))
@@ -222,7 +226,7 @@ class Sim:
 
         return converged
 
-    def add_technical_noise(self):
+    def technical_noise(self):
         """ sequencing noise """
         raise NotImplementedError
 
@@ -230,7 +234,7 @@ class Sim:
 if __name__ == '__main__':
     start = time()
 
-    sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=20,
+    sim = Sim(num_genes=100, num_cells_types=9,
               interactions_filepath="data/Interaction_cID_4.txt",
               regulators_filepath="data/Regs_cID_4.txt",
               simulation_num_steps=100,
