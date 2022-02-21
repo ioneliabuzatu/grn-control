@@ -82,7 +82,7 @@ class Sim:
             self.basal_production_rates, curr_genes_expression, layer, subkeys
         )
         self.x = self.x.at[1:, layer].set(d_genes.T)
-        self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
+        self.mean_expression = self.mean_expression.at[layer].set(jnp.mean(self.x[:, layer], axis=0))
 
         for num_layer, layer in enumerate(layers_copy[1:], start=1):
             key, subkey = jax.random.split(key)
@@ -102,7 +102,7 @@ class Sim:
                 production_rates, curr_genes_expression, layer, subkeys
             )
             self.x = self.x.at[1:, layer].set(trajectories.T)
-            self.mean_expression = self.mean_expression.at[layer].set(np.mean(self.x[:, layer], axis=0))
+            self.mean_expression = self.mean_expression.at[layer].set(jnp.mean(self.x[:, layer], axis=0))
 
     def simulate_master_layer(self, basal_production_rate, curr_genes_expression, layer, key):
         subkeys = jax.random.split(key, len(layer))
@@ -131,7 +131,7 @@ class Sim:
         for gene in layer:
             regulators = self.regulators_dict[gene]
             mean_expression_per_cells_regulators_wise = mean_expression[regulators]
-            half_response = np.mean(mean_expression_per_cells_regulators_wise)
+            half_response = jnp.mean(mean_expression_per_cells_regulators_wise)
             half_responses.append(half_response)
         return half_responses
 
