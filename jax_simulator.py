@@ -40,8 +40,6 @@ class Sim:
         self.x = jnp.zeros(shape=(self.simulation_num_steps, num_genes, num_cells_types))
         self.half_response = jnp.zeros(num_genes)
         self.hill_coefficient = 2
-        self.p_value_for_convergence = 1e-3
-        self.window_len = 100
         self.dt = 0.01
 
         self.layers = None
@@ -59,14 +57,21 @@ class Sim:
 
         self.layers = topo_sort_graph_layers(graph)
         self.basal_production_rates = get_basal_production_rate(self.regulators_filename, self.num_genes,
-                                                           self.num_cell_types)
+                                                                          self.num_cell_types)
 
     def run_one_rollout(self, actions=None):
         """return the gene expression of shape [samples, genes]"""
+        self.actions = actions
         self.simulate_expression_layer_wise(actions)
-        return np.concatenate(self.x, axis=1).T  # shape=cells,genes
+        return self.x # np.concatenate(self.x, axis=1).T  # shape=cells,genes
 
-    def simulate_expression_layer_wise(self, actions):  # TODO where to add the actions, at the start or at the end of a rollout?
+    def simulate_expression_layer_wise(self, actions):
+        # assert actions.shape[0] == len(self.layers[0])
+        # self.basal_production_rates = jnp.zeros((100, 9))
+        # for action_gene, master_id in zip(actions, self.layers[0]):
+        #     self.basal_production_rates = self.basal_production_rates.at[master_id].set(action_gene)
+        # self.basal_production_rates = actions
+
         key = jax.random.PRNGKey(0)
         key, subkey = jax.random.split(key)
         subkeys = jax.random.split(subkey, self.num_cell_types)
@@ -208,28 +213,6 @@ class Sim:
         all_state = dw_d, dw_p
         gene_trajectory = jax.lax.scan(step, curr_genes_expression, all_state)[1]
         return gene_trajectory
-
-    def check_for_convergence(self, gene_concentration, concentration_criteria='np_all_close'):
-        converged = False
-
-        if concentration_criteria == 't_test':
-            sample1 = gene_concentration[-2 * self.window_len:-1 * self.window_len]
-            sample2 = gene_concentration[-1 * self.window_len:]
-            _, p = ttest_ind(sample1, sample2)
-            if p >= self.p_value_for_convergence:
-                converged = True
-
-        elif concentration_criteria == 'mean':
-            abs_mean_gene = np.abs(np.mean(gene_concentration[-self.window_len:]))
-            if abs_mean_gene <= self.p_value_for_convergence:
-                converged = True
-
-        elif concentration_criteria == 'np_all_close':
-            converged = np.allclose(gene_concentration[-2 * self.window_len:-1 * self.window_len],
-                                    gene_concentration[-self.window_len:],
-                                    atol=self.p_value_for_convergence)
-
-        return converged
 
     def technical_noise(self):
         """ sequencing noise """
