@@ -61,16 +61,14 @@ class Sim:
 
     def run_one_rollout(self, actions=None):
         """return the gene expression of shape [samples, genes]"""
-        self.actions = actions
         self.simulate_expression_layer_wise(actions)
         return self.x # np.concatenate(self.x, axis=1).T  # shape=cells,genes
 
     def simulate_expression_layer_wise(self, actions):
         # assert actions.shape[0] == len(self.layers[0])
-        # self.basal_production_rates = jnp.zeros((100, 9))
-        # for action_gene, master_id in zip(actions, self.layers[0]):
-        #     self.basal_production_rates = self.basal_production_rates.at[master_id].set(action_gene)
-        # self.basal_production_rates = actions
+        basal_production_rates = jnp.zeros((100, 9))
+        for action_gene, master_id in zip(actions, self.layers[0]):
+            basal_production_rates = basal_production_rates.at[master_id].set(action_gene)
 
         key = jax.random.PRNGKey(0)
         key, subkey = jax.random.split(key)
@@ -78,16 +76,20 @@ class Sim:
 
         layers_copy = [np.array(l) for l in deepcopy(self.layers)]  # TODO: remove deepcopy
         layer = np.array(layers_copy[0])
-        self.x = self.x.at[0, layer].set(self.basal_production_rates[np.array(layer)] / self.decay_lambda)
+        x = jnp.zeros_like(self.x)
+        x = x.at[0, layer].set(basal_production_rates[np.array(layer)] / self.decay_lambda)
+        # self.x = self.x.at[0, layer].set(basal_production_rates[np.array(layer)] / self.decay_lambda)
+        print(actions.mean().mean())
+        # self.x *= actions.mean().mean()
 
-        curr_genes_expression = self.x[0]
+        curr_genes_expression = x[0]
         curr_genes_expression = {k: curr_genes_expression[k] for k in
                                  range(len(curr_genes_expression))}  # TODO remove this
         d_genes = jax.vmap(self.simulate_master_layer, in_axes=(1, 0, None, 0))(
-            self.basal_production_rates, curr_genes_expression, layer, subkeys
+            basal_production_rates, curr_genes_expression, layer, subkeys
         )
-        self.x = self.x.at[1:, layer].set(d_genes.T)
-        self.mean_expression = self.mean_expression.at[layer].set(jnp.mean(self.x[:, layer], axis=0))
+        x = x.at[1:, layer].set(d_genes.T)
+        self.mean_expression = self.mean_expression.at[layer].set(jnp.mean(x[:, layer], axis=0))
 
         for num_layer, layer in enumerate(layers_copy[1:], start=1):
             key, subkey = jax.random.split(key)
@@ -95,9 +97,9 @@ class Sim:
 
             half_responses = self.calculate_half_response(tuple(layer), self.mean_expression)
             self.half_response = self.half_response.at[layer].set(half_responses)
-            self.x = self.init_concentration(tuple(layer), self.half_response, self.mean_expression, self.x)
+            x = self.init_concentration(tuple(layer), self.half_response, self.mean_expression, x)
 
-            curr_genes_expression = self.x[0]
+            curr_genes_expression = x[0]
             curr_genes_expression = {k: curr_genes_expression[k] for k in
                                      range(len(curr_genes_expression))}  # TODO remove this
             production_rates = jnp.array([self.calculate_production_rate(gene, self.half_response,
