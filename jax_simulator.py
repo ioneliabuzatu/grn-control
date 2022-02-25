@@ -61,8 +61,8 @@ class Sim:
 
     def run_one_rollout(self, actions=None):
         """return the gene expression of shape [samples, genes]"""
-        self.simulate_expression_layer_wise(actions)
-        return self.x # np.concatenate(self.x, axis=1).T  # shape=cells,genes
+        x = self.simulate_expression_layer_wise(actions)
+        return x  # np.concatenate(self.x, axis=1).T  # shape=cells,genes
 
     def simulate_expression_layer_wise(self, actions):
         # assert actions.shape[0] == len(self.layers[0])
@@ -76,40 +76,46 @@ class Sim:
 
         layers_copy = [np.array(l) for l in deepcopy(self.layers)]  # TODO: remove deepcopy
         layer = np.array(layers_copy[0])
-        x = jnp.zeros_like(self.x)
-        x = x.at[0, layer].set(basal_production_rates[np.array(layer)] / self.decay_lambda)
+        # x = jnp.zeros_like(self.x)
+        x_0 = dict(zip(layer, (basal_production_rates / self.decay_lambda)))
         # self.x = self.x.at[0, layer].set(basal_production_rates[np.array(layer)] / self.decay_lambda)
-        print(actions.mean().mean())
+        # print(x_0[67].shape)
         # self.x *= actions.mean().mean()
 
-        curr_genes_expression = x[0]
-        curr_genes_expression = {k: curr_genes_expression[k] for k in
-                                 range(len(curr_genes_expression))}  # TODO remove this
+        curr_genes_expression = x_0
+        # curr_genes_expression = {k: curr_genes_expression[k] for k in
+        #                          range(len(curr_genes_expression))}  # TODO remove this
         d_genes = jax.vmap(self.simulate_master_layer, in_axes=(1, 0, None, 0))(
             basal_production_rates, curr_genes_expression, layer, subkeys
         )
-        x = x.at[1:, layer].set(d_genes.T)
-        self.mean_expression = self.mean_expression.at[layer].set(jnp.mean(x[:, layer], axis=0))
+        x = {layer[i]: jnp.vstack((x_0[layer[i]].reshape(1, -1), d_genes.T[:, i, :])) for i in range(len(layer))}
+        # print(x[67].shape)
+        mean_expression = {idx: jnp.mean(x[idx], axis=0) for idx in layer}
+            # self.mean_expression.at[layer].set(jnp.mean(x[:, layer], axis=0))
 
         for num_layer, layer in enumerate(layers_copy[1:], start=1):
             key, subkey = jax.random.split(key)
             subkeys = jax.random.split(subkey, self.num_cell_types)
 
-            half_responses = self.calculate_half_response(tuple(layer), self.mean_expression)
-            self.half_response = self.half_response.at[layer].set(half_responses)
-            x = self.init_concentration(tuple(layer), self.half_response, self.mean_expression, x)
+            half_response = dict(zip(layer, self.calculate_half_response(tuple(layer), mean_expression)))
+            # self.half_response = self.half_response.at[layer].set(half_responses)
+            x_0.update(dict(zip(layer, self.init_concentration(tuple(layer), half_response, mean_expression, x))))
 
-            curr_genes_expression = x[0]
-            curr_genes_expression = {k: curr_genes_expression[k] for k in
-                                     range(len(curr_genes_expression))}  # TODO remove this
-            production_rates = jnp.array([self.calculate_production_rate(gene, self.half_response,
-                                                                         self.mean_expression) for gene in
+            curr_genes_expression = x_0
+            # curr_genes_expression = {k: curr_genes_expression[k] for k in
+            #                          range(len(curr_genes_expression))}  # TODO remove this
+            production_rates = jnp.array([self.calculate_production_rate(gene, half_response,
+                                                                         mean_expression) for gene in
                                           layer])
             trajectories = jax.vmap(self.simulate_targets, in_axes=(1, 0, None, 0))(
                 production_rates, curr_genes_expression, layer, subkeys
             )
-            self.x = self.x.at[1:, layer].set(trajectories.T)
-            self.mean_expression = self.mean_expression.at[layer].set(jnp.mean(self.x[:, layer], axis=0))
+            x.update({layer[i]: jnp.vstack((x_0[layer[i]].reshape(1, -1), trajectories.T[:, i, :])) for i in range(len(layer))})
+            # self.x = self.x.at[1:, layer].set(trajectories.T)
+            mean_expression.update({idx: jnp.mean(x[idx], axis=0) for idx in layer})
+            # self.mean_expression = self.mean_expression.at[layer].set(jnp.mean(self.x[:, layer], axis=0))
+
+        return x  # TODO: add variable that need to be carried over (half_response, mean_expression, etc.)
 
     def simulate_master_layer(self, basal_production_rate, curr_genes_expression, layer, key):
         subkeys = jax.random.split(key, len(layer))
@@ -137,22 +143,22 @@ class Sim:
         half_responses = []
         for gene in layer:
             regulators = self.regulators_dict[gene]
-            mean_expression_per_cells_regulators_wise = mean_expression[regulators]
+            mean_expression_per_cells_regulators_wise = jnp.vstack(tuple([mean_expression[reg] for reg in regulators]))
             half_response = jnp.mean(mean_expression_per_cells_regulators_wise)
             half_responses.append(half_response)
         return half_responses
 
     @functools.partial(jax.jit, static_argnums=(0, 1))
-    def init_concentration(self, layer: list, half_response: np.ndarray, mean_expression: np.ndarray, x):
+    def init_concentration(self, layer: list, half_response, mean_expression, x):
         """ Init concentration genes; Note: calculate_half_response should be run before this method """
         rates = jnp.array([self.calculate_production_rate(gene, half_response, mean_expression) for gene in layer])
         rates = rates / self.decay_lambda
-        return x.at[0, layer].set(rates)
+        return rates
 
     @functools.partial(jax.jit, static_argnums=(0, 1))
     def calculate_production_rate(self, gene, half_response, mean_expression):
         regulators = self.regulators_dict[gene]
-        mean_expression = mean_expression[regulators]
+        mean_expression = jnp.vstack(tuple([mean_expression[reg] for reg in regulators]))
         absolute_k = jnp.abs(self.adjacency[regulators][:, gene])
         half_response = half_response[gene]
         is_repressive = self.repressive_dict[gene]
