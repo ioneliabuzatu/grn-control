@@ -23,7 +23,7 @@ def control(env, num_episodes, num_cell_types,  num_master_genes):
     for episode in range(num_episodes):
         print("##################################################################################", episode)
         loss, grad = jax.value_and_grad(loss_fn)(actions)
-        grad = jnp.clip(jnp.nan_to_num(grad), -1, 1)
+        grad = jnp.clip(grad, -1, 1)
         print("loss", loss)
         print(f"grad shape: {grad.shape} \n grad: {grad}")
         actions += 0.001 * -grad

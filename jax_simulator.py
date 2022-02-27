@@ -75,9 +75,9 @@ class Sim:
         subkeys = jax.random.split(subkey, self.num_cell_types)
 
         layers_copy = [np.array(l) for l in deepcopy(self.layers)]  # TODO: remove deepcopy
-        layer = np.array(layers_copy[0])
+        master_layer = np.array(layers_copy[0])
         # x = jnp.zeros_like(self.x)
-        x_0 = dict(zip(layer, (basal_production_rates / self.decay_lambda)))
+        x_0 = dict(zip(master_layer, (basal_production_rates[master_layer] / self.decay_lambda)))
         # self.x = self.x.at[0, layer].set(basal_production_rates[np.array(layer)] / self.decay_lambda)
         # print(x_0[67].shape)
         # self.x *= actions.mean().mean()
@@ -86,11 +86,12 @@ class Sim:
         # curr_genes_expression = {k: curr_genes_expression[k] for k in
         #                          range(len(curr_genes_expression))}  # TODO remove this
         d_genes = jax.vmap(self.simulate_master_layer, in_axes=(1, 0, None, 0))(
-            basal_production_rates, curr_genes_expression, layer, subkeys
+            basal_production_rates, curr_genes_expression, master_layer, subkeys
         )
-        x = {layer[i]: jnp.vstack((x_0[layer[i]].reshape(1, -1), d_genes.T[:, i, :])) for i in range(len(layer))}
+        x = {master_layer[i]: jnp.vstack((x_0[master_layer[i]].reshape(1, -1), d_genes.T[:, i, :])) for i in range(len(
+            master_layer))}
         # print(x[67].shape)
-        mean_expression = {idx: jnp.mean(x[idx], axis=0) for idx in layer}
+        mean_expression = {idx: jnp.mean(x[idx], axis=0) for idx in master_layer}
             # self.mean_expression.at[layer].set(jnp.mean(x[:, layer], axis=0))
 
         for num_layer, layer in enumerate(layers_copy[1:], start=1):
