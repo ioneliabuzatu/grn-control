@@ -37,7 +37,6 @@ class Sim:
         self.mean_expression = -1 * jnp.ones((num_genes, num_cells_types))
         self.is_regulator = None
         print("simulation num step per trajectories: ", self.simulation_num_steps)
-        self.x = jnp.zeros(shape=(self.simulation_num_steps, num_genes, num_cells_types))
         self.half_response = jnp.zeros(num_genes)
         self.hill_coefficient = 2
         self.dt = 0.01
@@ -56,8 +55,8 @@ class Sim:
             zip(genes, [self.adjacency[:, g, None].repeat(self.num_cell_types, axis=1) < 0 for g in genes]))
 
         self.layers = topo_sort_graph_layers(graph)
-        self.basal_production_rates = get_basal_production_rate(self.regulators_filename, self.num_genes,
-                                                                          self.num_cell_types)
+        # self.basal_production_rates = jnp.array(get_basal_production_rate(self.regulators_filename, self.num_genes,
+        #                                                                   self.num_cell_types))
 
     def run_one_rollout(self, actions=None):
         """return the gene expression of shape [samples, genes]"""
@@ -65,10 +64,10 @@ class Sim:
         return x  # np.concatenate(self.x, axis=1).T  # shape=cells,genes
 
     def simulate_expression_layer_wise(self, actions):
-        # assert actions.shape[0] == len(self.layers[0])
-        basal_production_rates = jnp.zeros((100, 9))
-        for action_gene, master_id in zip(actions, self.layers[0]):
-            basal_production_rates = basal_production_rates.at[master_id].set(action_gene)
+        basal_production_rates = jnp.zeros((self.num_genes, self.num_cell_types))
+        if actions is not None:
+            for action_gene, master_id in zip(actions, self.layers[0]):
+                basal_production_rates = basal_production_rates.at[master_id].set(action_gene)
 
         key = jax.random.PRNGKey(0)
         key, subkey = jax.random.split(key)
@@ -240,12 +239,13 @@ if __name__ == '__main__':
 
     if is_debugger_active():
         with jax.disable_jit():
-            sim.run_one_rollout()
+            x = sim.run_one_rollout()
     else:
-        sim.run_one_rollout()
+        x = sim.run_one_rollout()
+    
+    expr_clean = jnp.stack(tuple([x[gene] for gene in range(sim.num_genes)])).swapaxes(0, 1)
 
-    expr_clean = sim.x
     print(expr_clean.shape)
     print(f"time: {time() - start}")
 
-    plot_three_genes(expr_clean.T[0, 44], expr_clean.T[0, 1], expr_clean.T[0, 99])
+    plot_three_genes(expr_clean.T[0, 44], expr_clean.T[0, 1], expr_clean.T[0, 99], hlines=None)
