@@ -47,15 +47,12 @@ class Sim:
     def simulate_expression_layer_wise(self, layers, basal_production_rate):
         random_sampling_state = np.random.randint(low=-self.simulation_time_steps, high=0,
                                                   size=self.num_cells_to_simulate)
-        f, ax = plt.subplots(1, 3, figsize=(10, 10))
         layers_copy = deepcopy(layers)
         for num_layer, layer in enumerate(layers_copy):
             if num_layer != 0:  # not the master layer
                 self.calculate_half_response(layer)
             self.init_concentration(layer, basal_production_rate)
             print("layer: ", num_layer)
-
-            ax[num_layer].bar([str(g) for g in layer], self.x[0, layer, 0])
 
             production_rates = [self.calculate_production_rate(gene, basal_production_rate) for gene in layer]
             for step in range(1, self.simulation_time_steps):
@@ -69,7 +66,6 @@ class Sim:
             # self._x[:, layer] = self.x[random_sampling_state][:, layer]
             self.mean_expression[layer] = np.mean(self.x[:, layer], axis=0)
 
-        plt.show()
 
     def calculate_half_response(self, layer):
 
@@ -82,7 +78,7 @@ class Sim:
     def init_concentration(self, layer: list, basal_production_rate):
         """ Init concentration genes; Note: calculate_half_response should be run before this method """
         rates = np.array([self.calculate_production_rate(gene, basal_production_rate) for gene in layer])
-        self.x[0, layer] = 1 # rates / self.decay_lambda
+        self.x[0, layer] = rates / self.decay_lambda
 
     def calculate_production_rate(self, gene, basal_production_rate):
         gene_basal_production = basal_production_rate[gene]
@@ -125,7 +121,7 @@ class Sim:
         if self.deterministic:
             d_genes = 0.01 * np.subtract(production_rates, decays)
             return d_genes
-        d_genes = 0.01 * np.subtract(production_rates, decays) # + np.power(0.01, 0.5) * noise  # shape=(#genes,#types)
+        d_genes = 0.01 * np.subtract(production_rates, decays) + np.power(0.01, 0.5) * noise  # shape=(#genes,#types)
         return d_genes
 
     def check_for_convergence(self, gene_concentration, concentration_criteria='np_all_close'):
@@ -257,12 +253,13 @@ if __name__ == '__main__':
     start = time.time()
     interactions_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Interaction_cID_4.txt'
     regulators_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Regs_cID_4.txt'
-    sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=100,
+    sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=2000,
               interactions=interactions_filename, regulators=regulators_filename,
-              noise_amplitude=1, deterministic=False)
+              noise_amplitude=0.5, deterministic=False)
     sim.run()
     expr_clean = sim. x
     print(expr_clean.shape)
     print(f"took {time.time() - start} seconds")
 
-    plot_three_genes(expr_clean.T[0,44], expr_clean.T[0, 1], expr_clean.T[0, 99], hlines=sim.hlines)
+    plot_three_genes(expr_clean.T[0,44], expr_clean.T[0, 1], expr_clean.T[0, 99], hlines=sim.hlines, xmax=30000,
+                     title="initial t0 with basal production rates")
