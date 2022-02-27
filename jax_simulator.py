@@ -55,65 +55,60 @@ class Sim:
             zip(genes, [self.adjacency[:, g, None].repeat(self.num_cell_types, axis=1) < 0 for g in genes]))
 
         self.layers = topo_sort_graph_layers(graph)
-        # self.basal_production_rates = jnp.array(get_basal_production_rate(self.regulators_filename, self.num_genes,
-        #                                                                   self.num_cell_types))
 
     def run_one_rollout(self, actions=None):
         """return the gene expression of shape [samples, genes]"""
-        x = self.simulate_expression_layer_wise(actions)
-        return x  # np.concatenate(self.x, axis=1).T  # shape=cells,genes
-
-    def simulate_expression_layer_wise(self, actions):
-        basal_production_rates = jnp.zeros((self.num_genes, self.num_cell_types))
         if actions is not None:
+            basal_production_rates = jnp.zeros((self.num_genes, self.num_cell_types))
             for action_gene, master_id in zip(actions, self.layers[0]):
                 basal_production_rates = basal_production_rates.at[master_id].set(action_gene)
+        else:
+            basal_production_rates = jnp.array(
+                get_basal_production_rate(self.regulators_filename, self.num_genes, self.num_cell_types))
 
+        x = self.simulate_expression_layer_wise(basal_production_rates)
+        return x
+
+    def simulate_expression_layer_wise(self, basal_production_rates):
         key = jax.random.PRNGKey(0)
         key, subkey = jax.random.split(key)
         subkeys = jax.random.split(subkey, self.num_cell_types)
 
         layers_copy = [np.array(l) for l in deepcopy(self.layers)]  # TODO: remove deepcopy
         master_layer = np.array(layers_copy[0])
-        # x = jnp.zeros_like(self.x)
         x_0 = dict(zip(master_layer, (basal_production_rates[master_layer] / self.decay_lambda)))
-        # self.x = self.x.at[0, layer].set(basal_production_rates[np.array(layer)] / self.decay_lambda)
-        # print(x_0[67].shape)
-        # self.x *= actions.mean().mean()
-
         curr_genes_expression = x_0
-        # curr_genes_expression = {k: curr_genes_expression[k] for k in
-        #                          range(len(curr_genes_expression))}  # TODO remove this
+
         d_genes = jax.vmap(self.simulate_master_layer, in_axes=(1, 0, None, 0))(
             basal_production_rates, curr_genes_expression, master_layer, subkeys
         )
         x = {master_layer[i]: jnp.vstack((x_0[master_layer[i]].reshape(1, -1), d_genes.T[:, i, :])) for i in range(len(
             master_layer))}
-        # print(x[67].shape)
         mean_expression = {idx: jnp.mean(x[idx], axis=0) for idx in master_layer}
-            # self.mean_expression.at[layer].set(jnp.mean(x[:, layer], axis=0))
+        # self.mean_expression = self.mean_expression.at[master_layer].set([jnp.mean(x[master_gene], axis=0) for
+        #                                                                   master_gene in
+        #                                                                   master_layer])
 
         for num_layer, layer in enumerate(layers_copy[1:], start=1):
             key, subkey = jax.random.split(key)
             subkeys = jax.random.split(subkey, self.num_cell_types)
 
             half_response = dict(zip(layer, self.calculate_half_response(tuple(layer), mean_expression)))
-            # self.half_response = self.half_response.at[layer].set(half_responses)
+            # self.half_response = self.half_response.at[layer].set([half_response[layer_gene] for layer_gene in layer])
+
             x_0.update(dict(zip(layer, self.init_concentration(tuple(layer), half_response, mean_expression, x))))
 
             curr_genes_expression = x_0
-            # curr_genes_expression = {k: curr_genes_expression[k] for k in
-            #                          range(len(curr_genes_expression))}  # TODO remove this
-            production_rates = jnp.array([self.calculate_production_rate(gene, half_response,
-                                                                         mean_expression) for gene in
-                                          layer])
+            production_rates = jnp.array(
+                [self.calculate_production_rate(gene, half_response, mean_expression) for gene in layer])
             trajectories = jax.vmap(self.simulate_targets, in_axes=(1, 0, None, 0))(
                 production_rates, curr_genes_expression, layer, subkeys
             )
-            x.update({layer[i]: jnp.vstack((x_0[layer[i]].reshape(1, -1), trajectories.T[:, i, :])) for i in range(len(layer))})
-            # self.x = self.x.at[1:, layer].set(trajectories.T)
+            x.update({layer[i]: jnp.vstack((x_0[layer[i]].reshape(1, -1), trajectories.T[:, i, :])) for i in
+                      range(len(layer))})
             mean_expression.update({idx: jnp.mean(x[idx], axis=0) for idx in layer})
-            # self.mean_expression = self.mean_expression.at[layer].set(jnp.mean(self.x[:, layer], axis=0))
+            # self.mean_expression = self.mean_expression.at[layer].set([jnp.mean(self.x[layer_gene], axis=0) for
+            # layer_gene in layer])
 
         return x  # TODO: add variable that need to be carried over (half_response, mean_expression, etc.)
 
@@ -233,7 +228,7 @@ if __name__ == '__main__':
     sim = Sim(num_genes=100, num_cells_types=9,
               interactions_filepath="data/Interaction_cID_4.txt",
               regulators_filepath="data/Regs_cID_4.txt",
-              simulation_num_steps=100,
+              simulation_num_steps=10000,
               )
     sim.build()
 
@@ -242,7 +237,7 @@ if __name__ == '__main__':
             x = sim.run_one_rollout()
     else:
         x = sim.run_one_rollout()
-    
+
     expr_clean = jnp.stack(tuple([x[gene] for gene in range(sim.num_genes)])).swapaxes(0, 1)
 
     print(expr_clean.shape)
