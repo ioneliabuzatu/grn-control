@@ -18,9 +18,10 @@ def evaluate(network: nn.Module, data: DataLoader, metric) -> list:
     for x, y in data:
         x, y = x.to(device), y.to(device)
         logits = network(x)
-        if logits.dim != y.dim:
-            y = y.unsqueeze(1)
-        errors.append(metric(logits, y).item())
+        # if logits.dim != y.dim:
+        #     y = y.unsqueeze(1)
+        # errors.append(metric(logits, y).item())
+        errors.append(metric(logits, y.long()).item())
 
     return errors
 
@@ -34,13 +35,17 @@ def update(network: nn.Module, data: DataLoader, loss: nn.Module,
     errs = []
     for x, y in data:
         x, y = x.to(device), y.to(device)
-        logits = network(x)
-        if logits.dim != y.dim:
-            y = y.unsqueeze(1)
-        err = loss(logits, y)
-        errs.append(err.item())
 
         opt.zero_grad()
+
+        logits = network(x)
+        # if logits.dim != y.dim:
+        #     y = y.unsqueeze(1)
+
+        # err = loss(logits, y)
+        err = loss(logits, y.long())
+        errs.append(err.item())
+
         err.backward()
         opt.step()
 
@@ -80,12 +85,22 @@ def accuracy(logits, targets):
 def binary_acc(logits, targets):
     if logits.dim != targets.dim:
         targets = targets.unsqueeze(1)
+
     y_pred_tag = torch.round(torch.sigmoid(logits))
 
     correct_results_sum = (y_pred_tag == targets).sum().float()
     acc = correct_results_sum / targets.shape[0]
     acc = torch.round(acc * 100)
     return acc.item()
+
+
+@torch.no_grad()
+def multiclass_acc(logits, targets):
+    probs = torch.softmax(logits, dim=1)
+    winners = probs.argmax(dim=1)
+    corrects = (winners == targets)
+    accuracy = corrects.sum().float() / float(targets.size(0))
+    return accuracy.item()
 
 
 @torch.no_grad()
@@ -98,7 +113,8 @@ def get_accuracy(network, dataloader):
         targets = targets.to(device)
 
         logits = network(inputs)
-        accuracy_mini_batch = binary_acc(logits, targets)
+        # accuracy_mini_batch = binary_acc(logits, targets)
+        accuracy_mini_batch = multiclass_acc(logits, targets)
         accuracies.append(accuracy_mini_batch)
 
     return accuracies
@@ -107,7 +123,7 @@ def get_accuracy(network, dataloader):
 class CellStateClassifier(nn.Module):
     """ Classifier network for classifying cell state {healthy, unhealthy} """
 
-    def __init__(self, num_genes: int):
+    def __init__(self, num_genes: int, num_cell_types):
         """
         Parameters
         ----------
@@ -115,9 +131,15 @@ class CellStateClassifier(nn.Module):
             The number of output classes in the data.
         """
         super(CellStateClassifier, self).__init__()
-        self.fc1 = nn.Linear(num_genes, num_genes*2)
-        self.fc2 = nn.Linear(num_genes*2, num_genes//2)
-        self.fc3 = nn.Linear(num_genes//2, 1)
+
+        self.fc1 = nn.Linear(num_genes, num_genes * 2)
+        self.fc2 = nn.Linear(num_genes * 2, num_genes * 3)
+
+        if num_cell_types == 2:
+            self.fc3 = nn.Linear(num_genes // 2, 1)
+        else:
+            self.fc3 = nn.Linear(num_genes * 3, num_cell_types)
+
         torch.nn.init.xavier_uniform_(self.fc1.weight)
         torch.nn.init.xavier_uniform_(self.fc2.weight)
         torch.nn.init.xavier_uniform_(self.fc3.weight)
@@ -157,10 +179,13 @@ class TranscriptomicsDataset(Dataset):
             self.genes_names = self.data[0, :]
             self.data = self.data[1:, :]
         self.preprocess_data()
-        self.labels_encoding, self.labels_categorical = np.unique(self.data[:, -1], return_inverse=True)
+        # self.labels_encoding, self.labels_categorical = np.unique(self.data[:, -1], return_inverse=True)
+        self.labels_encoding, self.labels_categorical = np.unique(
+            np.concatenate([np.array([str(x)] * 10000, dtype=object) for x in range(9)], axis=0), return_inverse=True)
 
     def __getitem__(self, idx):
-        data = self.data[idx, :-1]
+        # data = self.data[idx, :-1]
+        data = self.data[idx]
         # indices_to_set_to_zero = np.random.permutation(self.num_genes_to_zero_for_batch_sgd)
         # data = data[indices_to_set_to_zero]
         # data[indices_to_set_to_zero] = 0.0
@@ -176,7 +201,8 @@ class TranscriptomicsDataset(Dataset):
         """ TODO: try TPM normalization too """
         # x_normed = data / data.max(axis=1)
         if self.normalize_data:
-            self.data[1:, :-1] = normalize(self.data[1:, :-1], axis=1, norm="max")
+            # self.data[1:, :-1] = normalize(self.data[1:, :-1], axis=1, norm="max")
+            self.data = normalize(self.data, axis=1, norm="max")
 
 
 def train_val_dataset(dataset, val_split=0.25):
@@ -191,11 +217,14 @@ def torch_to_jax(model=None):
     if model is None:
         model = CellStateClassifier(100)
     init_fn, predict_fn = stax.serial(
-        stax.Dense(model.fc1.out_features, lambda *_: model.fc1.weight.detach().numpy().T, lambda *_: model.fc1.bias.detach().numpy()),
+        stax.Dense(model.fc1.out_features, lambda *_: model.fc1.weight.detach().numpy().T,
+                   lambda *_: model.fc1.bias.detach().numpy()),
         stax.Selu,
-        stax.Dense(model.fc2.out_features, lambda *_: model.fc2.weight.detach().numpy().T, lambda *_: model.fc2.bias.detach().numpy()),
+        stax.Dense(model.fc2.out_features, lambda *_: model.fc2.weight.detach().numpy().T,
+                   lambda *_: model.fc2.bias.detach().numpy()),
         stax.Selu,
-        stax.Dense(model.fc3.out_features, lambda *_: model.fc3.weight.detach().numpy().T, lambda *_: model.fc3.bias.detach().numpy()),
+        stax.Dense(model.fc3.out_features, lambda *_: model.fc3.weight.detach().numpy().T,
+                   lambda *_: model.fc3.bias.detach().numpy()),
     )
     rng_key = jax.random.PRNGKey(0)
     _, params = init_fn(rng_key, (model.fc1.in_features,))
