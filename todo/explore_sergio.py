@@ -10,9 +10,9 @@ import experiment_buddy
 from steady_state import sergio
 # from sergio_plot_trajectories import sergio
 
-params = {'num_genes': 100, 'num_cells_types': 9, 'num_cells_to_simulate': 5}
-experiment_buddy.register_defaults(params)
-writer = experiment_buddy.deploy()
+# params = {'num_genes': 100, 'num_cells_types': 9, 'num_cells_to_simulate': 5}
+# experiment_buddy.register_defaults(params)
+# writer = experiment_buddy.deploy()
 
 
 def steady_state(number_genes=None,
@@ -33,17 +33,18 @@ def steady_state(number_genes=None,
                  noise_type=noise_type)
     sim.build_graph(input_file_taregts=input_file_targets, input_file_regs=input_file_regs, shared_coop_state=2)
     sim.simulate()
-    plot_trajectory_from_sim(sim)
+    # plot_trajectory_from_sim(sim)
     expression = sim.getExpressions()  # shape(#types, #genes, #trajectories)
     print(expression.shape)
-    # expr_add_outlier_genes = sim.outlier_effect(expression, outlier_prob=0.01, mean=0.8, scale=1)
-    # libFactor, expr_O_L = sim.lib_size_effect(expr_add_outlier_genes, mean=4.6, scale=0.4)
-    # binary_ind = sim.dropout_indicator(expr_O_L, shape=6.5, percentile=82)
-    # expr_O_L_D = np.multiply(binary_ind, expr_O_L)
-    # count_matrix_umi_count_format = sim.convert_to_UMIcounts(expr_O_L_D)
-    # count_expression_matrix = np.concatenate(count_matrix_umi_count_format, axis=1)
-    # transposed_count_matrix = count_expression_matrix.T
-    # return transposed_count_matrix
+    expr_add_outlier_genes = sim.outlier_effect(expression, outlier_prob=0.01, mean=0.8, scale=1)
+    print(len(expr_add_outlier_genes))
+    libFactor, expr_O_L = sim.lib_size_effect(expr_add_outlier_genes, mean=4.6, scale=0.4)
+    binary_ind = sim.dropout_indicator(expr_O_L, shape=6.5, percentile=82)
+    expr_O_L_D = np.multiply(binary_ind, expr_O_L)
+    count_matrix_umi_count_format = sim.convert_to_UMIcounts(expr_O_L_D)
+    count_expression_matrix = np.concatenate(count_matrix_umi_count_format, axis=1)
+    transposed_count_matrix = count_expression_matrix.T
+    return transposed_count_matrix
 
 
 def differentiated_states(bmat_filepath,

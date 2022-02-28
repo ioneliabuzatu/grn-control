@@ -113,5 +113,5 @@ def plot_stats():
 
 
 if __name__ == "__main__":
-    run_sergio_full_dynamics(how_many_runs=10)
+    run_sergio_full_dynamics(how_many_runs=1)
     # plot_stats()
