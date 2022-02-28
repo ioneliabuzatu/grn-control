@@ -4,6 +4,7 @@ import jax.numpy as jnp
 import jax
 from src.zoo_functions import is_debugger_active
 # from src.check_for_convergence import check_for_convergence
+from src.zoo_functions import plot_three_genes
 
 
 def control(env, num_episodes, num_cell_types,  num_master_genes):
@@ -14,11 +15,16 @@ def control(env, num_episodes, num_cell_types,  num_master_genes):
         expression_shape_trajectories_genes_cells = env.run_one_rollout(actions)
         expression_shape_trajectories_genes_cells = jnp.stack(tuple([expression_shape_trajectories_genes_cells[gene]
                                                                     for gene in range(env.num_genes)])).swapaxes(0, 1)
-        expression_shape_cells_genes = jnp.concatenate(expression_shape_trajectories_genes_cells, axis=1).T
-        return -expression_shape_cells_genes.mean()
-        # return -1.0  # TODO: is loss just a scalar here?
 
-    actions = jnp.ones(shape=(7, num_cell_types))
+        expression_shape_cells_genes = jnp.concatenate(expression_shape_trajectories_genes_cells, axis=1).T
+
+        plot_three_genes(expression_shape_trajectories_genes_cells[0, 44],
+                         expression_shape_trajectories_genes_cells[0, 1],
+                         expression_shape_trajectories_genes_cells[0, 99],
+                         hlines=None)
+        return -expression_shape_cells_genes.mean()
+
+    actions = jnp.ones(shape=(num_master_genes, num_cell_types))
 
     for episode in range(num_episodes):
         print("##################################################################################", episode)

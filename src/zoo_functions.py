@@ -1,5 +1,6 @@
 import sys
 import matplotlib.pyplot as plt
+import jax
 
 
 def is_debugger_active() -> bool:
@@ -7,18 +8,28 @@ def is_debugger_active() -> bool:
     return gettrace() is not None
 
 
-def plot_three_genes(gene1, gene2, gene3, hlines=None):
+def plot_three_genes(gene1, gene2, gene3, hlines=None, xmax=1500):
     """sanity check one gene from each layer"""
     _, axes = plt.subplots(1, 3, figsize=(10, 5))
+    
+    if isinstance(gene1, jax.interpreters.ad.JVPTracer):
+        gene1 = gene1.primal
+        gene2 = gene2.primal
+        gene3 = gene3.primal
+
     axes[0].plot(gene1)
-    axes[0].hlines(y=hlines[0], xmin=0, xmax=1500, linewidth=2, color='r')
-    axes[0].set_title('Gene 44 in layer 0')
     axes[1].plot(gene2)
-    axes[1].hlines(y=hlines[1], xmin=0, xmax=1500, linewidth=2, color='r')
-    axes[1].set_title('Gene 1 in layer 1')
     axes[2].plot(gene3)
-    axes[2].hlines(y=hlines[2], xmin=0, xmax=1500, linewidth=2, color='r')
+
+    axes[0].set_title('Gene 44 in layer 0')
+    axes[1].set_title('Gene 1 in layer 1')
     axes[2].set_title('Gene 99 in layer 2')
+
+    if hlines is not None:
+        axes[0].hlines(y=hlines[0], xmin=0, xmax=xmax, linewidth=2, color='r')
+        axes[1].hlines(y=hlines[1], xmin=0, xmax=xmax, linewidth=2, color='r')
+        axes[2].hlines(y=hlines[2], xmin=0, xmax=xmax, linewidth=2, color='r')
+
     plt.show()
 
     

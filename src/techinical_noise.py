@@ -3,7 +3,9 @@ import numpy as np
 
 class AddTechnicalNoise:
 
-    def __init__(self, num_genes: int, outlier_genes_noises: tuple, library_size_noises: tuple, dropout_noises: tuple):
+    def __init__(self, num_genes: int, num_cell_types: int, num_simulated_cells: int, outlier_genes_noises: tuple,
+                 library_size_noises: tuple,
+                 dropout_noises: tuple):
         """
         @:param num_genes: number of genes
         @:param outlier_genes_noises: the noise of the outlier genes (pie, miu, sigma)
@@ -14,23 +16,40 @@ class AddTechnicalNoise:
         those noises are data-driven parameters, have to be calculated from the real count matrix data
         """
         self.num_genes = num_genes
+        self.num_cell_types = num_cell_types
+        self.num_simulated_cells = num_simulated_cells
         self.pie_outlier_genes, self.miu_outlier_genes, self.sigma_outlier_genes = outlier_genes_noises
         self.miu_library_size, self.sigma_library_size = library_size_noises
-        self.k_dropout, q_dropout = dropout_noises
+        self.k_dropout, self.q_dropout = dropout_noises
 
     def get_noisy_technical_concentration(self, clean_concentration):
         assert clean_concentration.shape[1] == self.num_genes
-        expr_add_outlier_genes = self.outlier_genes_effect(clean_concentration, outlier_prob=0.01, mean=0.8, scale=1)
-        libFactor, expr_O_L = self.library_size_effect(expr_add_outlier_genes, mean=4.8, scale=0.3)
-        binary_ind = self.dropout_indicator(expr_O_L, shape=20, percentile=82)
+
+        expr_add_outlier_genes = self.outlier_genes_effect(
+            clean_concentration,
+            outlier_genes_prob=self.pie_outlier_genes,
+            mean=self.miu_outlier_genes,
+            scale=self.sigma_outlier_genes
+        )
+
+        libFactor, expr_O_L = self.library_size_effect(
+            expr_add_outlier_genes,
+            self.miu_library_size,
+            scale=self.sigma_library_size
+        )
+
+        binary_ind = self.dropout_indicator(expr_O_L, shape=self.k_dropout, percentile=self.q_dropout)
+
         expr_O_L_D = np.multiply(binary_ind, expr_O_L)
-        count_matrix_umi_count_format = self.convert_to_UMIcounts(expr_O_L_D)
+        count_matrix_umi_count_format = self.to_umi_counts(expr_O_L_D)
         noisy_concentration = np.concatenate(count_matrix_umi_count_format, axis=1)
-        print(noisy_concentration.shape)
+
+        assert noisy_concentration.shape[0] == self.num_genes
+
         return noisy_concentration
 
     def outlier_genes_effect(self, scData, outlier_genes_prob, mean, scale):
-        out_indicator = np.random.binomial(n=1, p=outlier_genes_prob, size=self.nGenes_)
+        out_indicator = np.random.binomial(n=1, p=outlier_genes_prob, size=self.num_genes)
         outlierGenesIndx = np.where(out_indicator == 1)[0]
         numOutliers = len(outlierGenesIndx)
 
@@ -42,7 +61,7 @@ class AddTechnicalNoise:
         for i, gIndx in enumerate(outlierGenesIndx):
             scData[gIndx, :] = scData[gIndx, :] * outFactors[i]
 
-        return np.split(scData, self.nBins_, axis=1)
+        return np.split(scData, self.num_cell_types, axis=1)
 
     def library_size_effect(self, scData, mean, scale):
         """
@@ -64,12 +83,12 @@ class AddTechnicalNoise:
         # TODO make sure that having bins does not intefere with this implementation
         ret_data = []
 
-        libFactors = np.random.lognormal(mean=mean, sigma=scale, size=(self.nBins_, self.nSC_))
+        libFactors = np.random.lognormal(mean=mean, sigma=scale, size=(self.num_cell_types, self.num_simulated_cells))
         for binExprMatrix, binFactors in zip(scData, libFactors):
             normalizFactors = np.sum(binExprMatrix, axis=0)
             binFactors = np.true_divide(binFactors, normalizFactors)
-            binFactors = binFactors.reshape(1, self.nSC_)
-            binFactors = np.repeat(binFactors, self.nGenes_, axis=0)
+            binFactors = binFactors.reshape(1, self.num_simulated_cells)
+            binFactors = np.repeat(binFactors, self.num_genes, axis=0)
 
             ret_data.append(np.multiply(binExprMatrix, binFactors))
 

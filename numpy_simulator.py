@@ -25,7 +25,7 @@ class Sim:
         self.adjacency = np.zeros(shape=(self.num_genes, self.num_genes))
         self.decay_lambda = 0.8
         self.mean_expression = -1 * np.ones((num_genes, num_cells_types))
-        self.sampling_state = 15
+        self.sampling_state = 10
         self.simulation_time_steps = self.sampling_state * self.num_cells_to_simulate
         print("sampling time steps: ", self.simulation_time_steps)
         self.x = np.zeros(shape=(self.simulation_time_steps, num_genes, num_cells_types))
@@ -48,15 +48,12 @@ class Sim:
     def simulate_expression_layer_wise(self, layers, basal_production_rate):
         random_sampling_state = np.random.randint(low=-self.simulation_time_steps, high=0,
                                                   size=self.num_cells_to_simulate)
-        f, ax = plt.subplots(1, 3, figsize=(10, 10))
         layers_copy = deepcopy(layers)
         for num_layer, layer in enumerate(layers_copy):
             if num_layer != 0:  # not the master layer
                 self.calculate_half_response(layer)
             self.init_concentration(layer, basal_production_rate)
             print("layer: ", num_layer)
-
-            ax[num_layer].bar([str(g) for g in layer], self.x[0, layer, 0])
 
             production_rates = [self.calculate_production_rate(gene, basal_production_rate) for gene in layer]
             for step in range(1, self.simulation_time_steps):
@@ -69,8 +66,6 @@ class Sim:
             # self.mean_expression[layer] = np.mean(self.x[random_sampling_state][:, layer], axis=0)
             # self._x[:, layer] = self.x[random_sampling_state][:, layer]
             self.mean_expression[layer] = np.mean(self.x[:, layer], axis=0)
-
-        plt.show()
 
     def calculate_half_response(self, layer):
 
@@ -156,7 +151,7 @@ if __name__ == '__main__':
     start = time.time()
     interactions_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Interaction_cID_4.txt'
     regulators_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Regs_cID_4.txt'
-    sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=100,
+    sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=30,
               interactions=interactions_filename, regulators=regulators_filename,
               noise_amplitude=1, deterministic=False)
     sim.run()
@@ -166,12 +161,12 @@ if __name__ == '__main__':
 
     plot_three_genes(expr_clean.T[0, 44], expr_clean.T[0, 1], expr_clean.T[0, 99], hlines=sim.hlines)
 
-    # outlier_genes_noises =
-    # library_size_noises = None
-    # dropout_noises = 0.1
+    outlier_genes_noises = (0.01, 0.8, 1)
+    library_size_noises = (4.8, 0.3)
+    dropout_noises = (20, 82)
 
-    noisy_expr = AddTechnicalNoise(num_genes=100,
-                                   outlier_genes_noises=None,
-                                library_size_noises=None,
-                                dropout_noises=0.1,
-                                ).get_noisy_technical_concentration(expr_clean)
+    expr = AddTechnicalNoise(100, 9, 300, outlier_genes_noises, library_size_noises,
+                             dropout_noises).get_noisy_technical_concentration(expr_clean.T)
+
+    noisy_expr = np.concatenate(expr, axis=1)
+    print(f"shape clean data: {noisy_expr.shape}")
