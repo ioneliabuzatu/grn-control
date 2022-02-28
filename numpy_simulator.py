@@ -67,6 +67,7 @@ class Sim:
             # self._x[:, layer] = self.x[random_sampling_state][:, layer]
             self.mean_expression[layer] = np.mean(self.x[:, layer], axis=0)
 
+
     def calculate_half_response(self, layer):
 
         for gene in layer:
@@ -78,7 +79,8 @@ class Sim:
     def init_concentration(self, layer: list, basal_production_rate):
         """ Init concentration genes; Note: calculate_half_response should be run before this method """
         rates = np.array([self.calculate_production_rate(gene, basal_production_rate) for gene in layer])
-        self.x[0, layer] = 1  # rates / self.decay_lambda
+        self.x[0, layer] = rates / self.decay_lambda
+
 
     def calculate_production_rate(self, gene, basal_production_rate):
         gene_basal_production = basal_production_rate[gene]
@@ -151,9 +153,10 @@ if __name__ == '__main__':
     start = time.time()
     interactions_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Interaction_cID_4.txt'
     regulators_filename = 'SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Regs_cID_4.txt'
+
     sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=30,
               interactions=interactions_filename, regulators=regulators_filename,
-              noise_amplitude=1, deterministic=False)
+              noise_amplitude=0.5, deterministic=False)
     sim.run()
     expr_clean = sim.x
     print(expr_clean.shape)

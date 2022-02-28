@@ -30,6 +30,7 @@ def plot_three_genes(gene1, gene2, gene3, hlines=None, xmax=1500):
         axes[1].hlines(y=hlines[1], xmin=0, xmax=xmax, linewidth=2, color='r')
         axes[2].hlines(y=hlines[2], xmin=0, xmax=xmax, linewidth=2, color='r')
 
+    plt.suptitle(title)
     plt.show()
 
     
