@@ -8,7 +8,7 @@ def is_debugger_active() -> bool:
     return gettrace() is not None
 
 
-def plot_three_genes(gene1, gene2, gene3, hlines=None, xmax=1500):
+def plot_three_genes(gene1, gene2, gene3, hlines=None, xmax=1500, title=""):
     """sanity check one gene from each layer"""
     _, axes = plt.subplots(1, 3, figsize=(10, 5))
     

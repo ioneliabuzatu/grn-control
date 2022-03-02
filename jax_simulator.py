@@ -1,4 +1,7 @@
 import functools
+import torch
+# from src.models.expert.classfier_cell_state import CellStateClassifier, torch_to_jax
+from src.techinical_noise import AddTechnicalNoise
 from copy import deepcopy
 from time import time
 
@@ -27,22 +30,19 @@ class Sim:
         self.regulators_filename = regulators_filepath
         self.simulation_num_steps = simulation_num_steps
         self.num_samples_from_trajectory = num_samples_from_trajectory  # use in future when trajectory is long 1M steps
-        self.noise_parameters_genes = np.repeat(noise_amplitude, num_genes)
-        self.add_technical_noise = add_technical_noise
+        self.noise_parameters_genes = jnp.repeat(noise_amplitude, num_genes)
 
         self.adjacency = jnp.zeros(shape=(self.num_genes, self.num_genes))
         self.regulators_dict = dict()
         self.repressive_dict = dict()
         self.decay_lambda = 0.8
         self.mean_expression = -1 * jnp.ones((num_genes, num_cells_types))
-        self.is_regulator = None
         print("simulation num step per trajectories: ", self.simulation_num_steps)
         self.half_response = jnp.zeros(num_genes)
         self.hill_coefficient = 2
         self.dt = 0.01
 
         self.layers = None
-        self.basal_production_rates = None
 
     def build(self):
         adjacency, graph = load_grn_jax(self.interactions_filename, self.adjacency)
@@ -85,16 +85,12 @@ class Sim:
         x = {master_layer[i]: jnp.vstack((x_0[master_layer[i]].reshape(1, -1), d_genes.T[:, i, :])) for i in range(len(
             master_layer))}
         mean_expression = {idx: jnp.mean(x[idx], axis=0) for idx in master_layer}
-        # self.mean_expression = self.mean_expression.at[master_layer].set([jnp.mean(x[master_gene], axis=0) for
-        #                                                                   master_gene in
-        #                                                                   master_layer])
 
         for num_layer, layer in enumerate(layers_copy[1:], start=1):
             key, subkey = jax.random.split(key)
             subkeys = jax.random.split(subkey, self.num_cell_types)
 
             half_response = dict(zip(layer, self.calculate_half_response(tuple(layer), mean_expression)))
-            # self.half_response = self.half_response.at[layer].set([half_response[layer_gene] for layer_gene in layer])
 
             x_0.update(dict(zip(layer, self.init_concentration(tuple(layer), half_response, mean_expression, x))))
 
@@ -107,8 +103,6 @@ class Sim:
             x.update({layer[i]: jnp.vstack((x_0[layer[i]].reshape(1, -1), trajectories.T[:, i, :])) for i in
                       range(len(layer))})
             mean_expression.update({idx: jnp.mean(x[idx], axis=0) for idx in layer})
-            # self.mean_expression = self.mean_expression.at[layer].set([jnp.mean(self.x[layer_gene], axis=0) for
-            # layer_gene in layer])
 
         return x  # TODO: add variable that need to be carried over (half_response, mean_expression, etc.)
 
@@ -217,23 +211,23 @@ class Sim:
         gene_trajectory = jax.lax.scan(step, curr_genes_expression, all_state)[1]
         return gene_trajectory
 
-    def technical_noise(self):
-        """ sequencing noise """
-        raise NotImplementedError
-
 
 if __name__ == '__main__':
     start = time()
+    simulation_num_steps = 10000
 
     sim = Sim(num_genes=100, num_cells_types=9,
               interactions_filepath="data/Interaction_cID_4.txt",
               regulators_filepath="data/Regs_cID_4.txt",
-              simulation_num_steps=10000,
+              simulation_num_steps=simulation_num_steps,
+              noise_amplitude=0.8,
               )
     sim.build()
 
     if is_debugger_active():
         with jax.disable_jit():
+            simulation_num_steps = 10
+            sim.simulation_num_steps = simulation_num_steps
             x = sim.run_one_rollout()
     else:
         x = sim.run_one_rollout()
@@ -242,5 +236,13 @@ if __name__ == '__main__':
 
     print(expr_clean.shape)
     print(f"time: {time() - start}")
+    plot_three_genes(expr_clean.T[0, 44], expr_clean.T[0, 1], expr_clean.T[0, 99], hlines=None, title="expression")
 
-    plot_three_genes(expr_clean.T[0, 44], expr_clean.T[0, 1], expr_clean.T[0, 99], hlines=None)
+    outlier_genes_noises = (0.01, 0.8, 1)
+    library_size_noises = (6, 0.4)
+    dropout_noises = (12, 80)
+    expr = AddTechnicalNoise(100, 9, simulation_num_steps, outlier_genes_noises, library_size_noises,
+                             dropout_noises).get_noisy_technical_concentration(expr_clean.T)
+    print(f"shape noisy data: {expr.shape}")
+
+    plot_three_genes(expr[0, 44], expr[0, 1], expr[0, 99], hlines=None, title="with technical noise\n")
