@@ -96,6 +96,8 @@ class AddTechnicalNoise:
 
     def dropout_indicator(self, scData, shape=1, percentile=65):
         """
+        Used because scRNA-seq destroys cells in the course of recording their profiles.
+
         This is similar to Splat package
 
         Input:

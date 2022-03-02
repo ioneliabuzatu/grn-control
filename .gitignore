@@ -137,3 +137,4 @@ runs/
 SERGIO/
 resources/experiments
 resources/papers
+src/models/expert/checkpoints

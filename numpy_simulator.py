@@ -9,19 +9,18 @@ from src.load_utils import load_grn, topo_sort_graph_layers, get_basal_productio
 from src.zoo_functions import plot_three_genes
 from src.techinical_noise import AddTechnicalNoise
 
-np.random.seed(123)
+# np.random.seed(123)
 
 
 class Sim:
 
     def __init__(self, num_genes, num_cells_types, num_cells_to_simulate, interactions, regulators, noise_amplitude,
-                 deterministic=False, **kwargs):
+                 **kwargs):
         self.interactions_filename = interactions
         self.regulators_filename = regulators
         self.num_genes = num_genes
         self.num_cell_types = num_cells_types
         self.num_cells_to_simulate = num_cells_to_simulate
-        self.deterministic = deterministic
         self.adjacency = np.zeros(shape=(self.num_genes, self.num_genes))
         self.decay_lambda = 0.8
         self.mean_expression = -1 * np.ones((num_genes, num_cells_types))
@@ -120,10 +119,7 @@ class Sim:
         amplitude_p = np.einsum("g,gt->gt", self.noise_parameters_genes[layer], np.power(production_rates, 0.5))
         amplitude_d = np.einsum("g,gt->gt", self.noise_parameters_genes[layer], np.power(decays, 0.5))
         noise = np.multiply(amplitude_p, dw_p) + np.multiply(amplitude_d, dw_d)
-        if self.deterministic:
-            d_genes = 0.01 * np.subtract(production_rates, decays)
-            return d_genes
-        d_genes = 0.01 * np.subtract(production_rates, decays)  # + np.power(0.01, 0.5) * noise  # shape=(#genes,#types)
+        d_genes = 0.01 * np.subtract(production_rates, decays)  + np.power(0.01, 0.5) * noise  # shape=(#genes,#types)
         return d_genes
 
     def check_for_convergence(self, gene_concentration, concentration_criteria='np_all_close'):
@@ -156,7 +152,8 @@ if __name__ == '__main__':
 
     sim = Sim(num_genes=100, num_cells_types=9, num_cells_to_simulate=30,
               interactions=interactions_filename, regulators=regulators_filename,
-              noise_amplitude=0.5, deterministic=False)
+              noise_amplitude=0.5
+              )
     sim.run()
     expr_clean = sim.x
     print(expr_clean.shape)
@@ -171,5 +168,4 @@ if __name__ == '__main__':
     expr = AddTechnicalNoise(100, 9, 300, outlier_genes_noises, library_size_noises,
                              dropout_noises).get_noisy_technical_concentration(expr_clean.T)
 
-    noisy_expr = np.concatenate(expr, axis=1)
-    print(f"shape clean data: {noisy_expr.shape}")
+    print(f"shape clean data: {expr.shape}")

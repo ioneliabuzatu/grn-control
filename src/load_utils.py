@@ -26,6 +26,7 @@ def load_grn(interactions_filename, adjacency):
 
 # TODO: We actually don't need adjacency, just the number of genes
 def load_grn_jax(interactions_filename, adjacency):
+    adjacency = np.zeros(shape=adjacency.shape)
     topo_sort_graph = nx.DiGraph()
 
     with open(interactions_filename, 'r') as f:
@@ -35,11 +36,14 @@ def load_grn_jax(interactions_filename, adjacency):
             contributions = [float(row.pop(0)) for x in range(num_regulators)]
             coop_state = [float(row.pop(0)) for x in range(num_regulators)]  # TODO add it
 
-            adjacency = adjacency.at[regulators_nodes_ids, target_node_id].set(contributions)
+            # adjacency = adjacency.at[regulators_nodes_ids, target_node_id].set(contributions)
+            adjacency[regulators_nodes_ids, target_node_id] = contributions
 
             topo_sort_graph.add_weighted_edges_from(
                 zip(regulators_nodes_ids, repeat(target_node_id), contributions)
             )
+    # adjacency[adjacency>0] = 1
+    # adjacency[adjacency<0] = -1
     return adjacency, topo_sort_graph
 
 
