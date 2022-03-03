@@ -41,10 +41,10 @@ class AddTechnicalNoiseJax:
             scale=self.sigma_library_size
         )
 
-        binary_ind = self._dropout_indicator(expr_O_L, shape=self.k_dropout, percentile=self.q_dropout)
+        binary_ind, key = self._dropout_indicator(expr_O_L, shape=self.k_dropout, percentile=self.q_dropout)
         print(f"binary shape: {binary_ind.shape}")
         expr_O_L_D = jnp.multiply(binary_ind, expr_O_L)
-        count_matrix_umi_count_format = self._to_umi_counts(expr_O_L_D)
+        count_matrix_umi_count_format = self._to_umi_counts(expr_O_L_D, key)
         noisy_concentration = jnp.concatenate(count_matrix_umi_count_format, axis=1)
 
         assert noisy_concentration.shape[0] == self.num_genes
@@ -123,22 +123,11 @@ class AddTechnicalNoiseJax:
         key, subkey = jax.random.split(key)
         subkeys = jax.random.split(subkey, prob_ber.shape[0])
         binary_ind = jax.random.bernoulli(subkey, p=prob_ber, shape=None)
-        return binary_ind
+        return binary_ind, key
 
-    @staticmethod
-    def binomial(key, p, n=1, shape=()):
-        p, n = _promote_shapes(p, n)
-        shape = shape or lax.broadcast_shapes(np.shape(p), np.shape(n))
-        n_max = np.max(n)
-        uniforms = random.uniform(key, shape + (n_max,))
-        n = np.expand_dims(n, axis=-1)
-        p = np.expand_dims(p, axis=-1)
-        mask = (np.arange(n_max) > n).astype(uniforms.dtype)
-        p, uniforms = promote_shapes(p, uniforms)
-        return np.sum(mask * lax.lt(uniforms, p), axis=-1, keepdims=False)
-
-    def _to_umi_counts(self, scData):
-        return jax.random.poisson(scData)
+    def _to_umi_counts(self, scData, key):
+        key, subkey = jax.random.split(key)
+        return jax.random.poisson(key, lam=scData)
 
 
 class AddTechnicalNoise:

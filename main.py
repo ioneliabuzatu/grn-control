@@ -16,24 +16,15 @@ import wandb
 import seaborn as sns
 
 
-class config:
-    expert_checkpoint_filepath = "src/models/expert/checkpoints/expert_ds2.pth"
-
-
 def cross_entropy(logprobs, targets):
     return -jnp.mean(jnp.sum(logprobs * targets, axis=1))
 
 
-def control(env, num_episodes, num_cell_types, num_master_genes, visualise_samples_genes=False,
+def control(env, num_episodes, num_cell_types, num_master_genes, expert, visualise_samples_genes=False,
             use_technical_noise=False, writer=None):
     start = time.time()
-    classifier = CellStateClassifier(num_genes=400, num_cell_types=9).to("cpu")
-    loaded_checkpoint = torch.load(config().expert_checkpoint_filepath, map_location=lambda storage, loc: storage)
-    classifier.load_state_dict(loaded_checkpoint)
-    classifier.eval()
-    classifier = torch_to_jax(classifier)
 
-    def loss_fn(actions, expert=classifier):
+    def loss_fn(actions):
         expr = env.run_one_rollout(actions)
         expr = jnp.stack(tuple([expr[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
 
@@ -50,7 +41,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, visualise_sampl
             expr = jnp.concatenate(expr, axis=1).T
 
         print(expr.shape)
-        output_classifier = expert(expr)
+        output_classifier = expert(expr.T)
         targets = jnp.array([8] * output_classifier.shape[0])
         loss = -jnp.mean(jnp.sum(jax.nn.log_softmax(output_classifier).T * targets, axis=1))
         return loss
@@ -66,13 +57,19 @@ def control(env, num_episodes, num_cell_types, num_master_genes, visualise_sampl
         actions += 0.001 * -grad
 
         writer.add_scalar(f"loss", loss, episode)
-        writer.run.log({"gradients cell condition 0": wandb.Histogram(np_histogram=np.histogram(grad[0]))})
-        writer.run.log({"gradients cell condition 1": wandb.Histogram(np_histogram=np.histogram(grad[1]))})
-        writer.run.log({"grads_x_genes_x_conditions": wandb.Image(
-            sns.heatmap(grad,
+        # writer.run.log({"gradients cell condition 0": wandb.Histogram(np_histogram=np.histogram(grad[0]))})
+        # writer.run.log({"gradients cell condition 1": wandb.Histogram(np_histogram=np.histogram(grad[1]))})
+        writer.run.log({"grads": wandb.Image(
+            sns.heatmap(grad.T,
                         linewidth=0.5,
+        #                 xticklabels=config.disease_gene_names
+                        ))},
+                        step=episode
+        )
+
+        writer.run.log({"actions": wandb.Image(sns.heatmap(actions))}, step=episode) # , linewidth=0.5,
                         # xticklabels=config.disease_gene_names
-                        ))})
+
 
     print(f"Took {time.time() - start:.3f} secs.")
 
@@ -80,7 +77,15 @@ def control(env, num_episodes, num_cell_types, num_master_genes, visualise_sampl
 if __name__ == "__main__":
     params = {'num_genes': 400}
     experiment_buddy.register_defaults(params)
-    buddy = None # experiment_buddy.deploy(host="")
+    buddy = experiment_buddy.deploy(host="")
+
+    expert_checkpoint_filepath = "src/models/expert/checkpoints/expert_ds2.pth"
+
+    classifier = CellStateClassifier(num_genes=400, num_cell_types=9).to("cpu")
+    loaded_checkpoint = torch.load(expert_checkpoint_filepath, map_location=lambda storage, loc: storage)
+    classifier.load_state_dict(loaded_checkpoint)
+    classifier.eval()
+    classifier = torch_to_jax(classifier)
 
     sim = Sim(num_genes=400, num_cells_types=9,
               interactions_filepath="SERGIO/data_sets/De-noised_400G_9T_300cPerT_5_DS2/Interaction_cID_5.txt",
@@ -93,4 +98,4 @@ if __name__ == "__main__":
         with jax.disable_jit():
             control(sim, 100, 9, num_master_genes=len(sim.layers[0]))
     else:
-        control(sim, 100, 9, len(sim.layers[0]), use_technical_noise=True, writer=buddy)
+        control(sim, 100, 9, len(sim.layers[0]), classifier, use_technical_noise=True, writer=buddy)
