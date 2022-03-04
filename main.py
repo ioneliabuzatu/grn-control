@@ -5,6 +5,9 @@ import jax
 import jax.numpy as jnp
 import torch
 
+from jax.example_libraries import optimizers
+
+
 from jax_simulator import Sim
 from src.models.expert.classfier_cell_state import CellStateClassifier
 from src.models.expert.classfier_cell_state import torch_to_jax
@@ -20,10 +23,11 @@ def cross_entropy(logprobs, targets):
     return -jnp.mean(jnp.sum(logprobs * targets, axis=1))
 
 
-def control(env, num_episodes, num_cell_types, num_master_genes, expert, visualise_samples_genes=False,
-            use_technical_noise=False, writer=None):
+def control(env, num_episodes, num_cell_types, num_master_genes, visualise_samples_genes=False,
+            use_technical_noise=False):
     start = time.time()
 
+    @jax.jit
     def loss_fn(actions):
         expr = env.run_one_rollout(actions)
         expr = jnp.stack(tuple([expr[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
@@ -35,18 +39,20 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
             outlier_genes_noises = (0.01, 0.8, 1)
             library_size_noises = (6, 0.4)
             dropout_noises = (12, 80)
+
             expr = AddTechnicalNoiseJax(400, 9, 2, outlier_genes_noises, library_size_noises,
                                      dropout_noises).get_noisy_technical_concentration(expr.T)
         else:
             expr = jnp.concatenate(expr, axis=1).T
 
         print(expr.shape)
-        output_classifier = expert(expr.T)
+        output_classifier = expert(expr)
         targets = jnp.array([8] * output_classifier.shape[0])
         loss = -jnp.mean(jnp.sum(jax.nn.log_softmax(output_classifier).T * targets, axis=1))
         return loss
 
     actions = jnp.ones(shape=(num_master_genes, num_cell_types))
+    optimizer = optimizers.adam(step_size=0.01)
 
     for episode in range(num_episodes):
         print("Episode#", episode)

@@ -16,6 +16,7 @@ from src.zoo_functions import is_debugger_active, plot_three_genes
 
 
 class Sim:
+    hill_coefficient = 2
 
     def __init__(self, num_genes: int, num_cells_types: int,
                  interactions_filepath: str, regulators_filepath: str,
@@ -33,13 +34,10 @@ class Sim:
         self.noise_parameters_genes = jnp.repeat(noise_amplitude, num_genes)
 
         self.adjacency = jnp.zeros(shape=(self.num_genes, self.num_genes))
-        self.regulators_dict = dict()
-        self.repressive_dict = dict()
         self.decay_lambda = 0.8
         self.mean_expression = -1 * jnp.ones((num_genes, num_cells_types))
         print("simulation num step per trajectories: ", self.simulation_num_steps)
         self.half_response = jnp.zeros(num_genes)
-        self.hill_coefficient = 2
         self.dt = 0.01
 
         self.layers = None
@@ -53,6 +51,17 @@ class Sim:
         self.regulators_dict = dict(zip(genes, [np.array(np.where(self.adjacency[:, g])[0]) for g in genes]))
         self.repressive_dict = dict(
             zip(genes, [self.adjacency[:, g, None].repeat(self.num_cell_types, axis=1) < 0 for g in genes]))
+
+        repressive_list = list()
+        for g in range(self.num_genes):
+            if g in self.repressive_dict:
+                v = self.repressive_dict[g].tolist()
+            else:
+                v = self.repressive_dict[0] * False
+
+            v = tuple(tuple(vv) for vv in v)
+            repressive_list.append(tuple(v))
+        self.repressive_dict = tuple(repressive_list)
 
         self.layers = topo_sort_graph_layers(graph)
 
@@ -92,11 +101,12 @@ class Sim:
 
             half_response = dict(zip(layer, self.calculate_half_response(tuple(layer), mean_expression)))
 
-            x_0.update(dict(zip(layer, self.init_concentration(tuple(layer), half_response, mean_expression, x))))
+            x_0.update(dict(zip(layer, self.init_concentration(tuple(layer), half_response, mean_expression))))
 
             curr_genes_expression = x_0
-            production_rates = jnp.array(
-                [self.calculate_production_rate(gene, half_response, mean_expression) for gene in layer])
+            params = Params(self.regulators_dict, self.adjacency, self.repressive_dict)
+
+            production_rates = jnp.array([calculate_production_rate(params, gene, half_response, mean_expression) for gene in layer])
             trajectories = jax.vmap(self.simulate_targets, in_axes=(1, 0, None, 0))(
                 production_rates, curr_genes_expression, layer, subkeys
             )
@@ -138,32 +148,12 @@ class Sim:
         return half_responses
 
     @functools.partial(jax.jit, static_argnums=(0, 1))
-    def init_concentration(self, layer: list, half_response, mean_expression, x):
+    def init_concentration(self, layer: list, half_response, mean_expression):
         """ Init concentration genes; Note: calculate_half_response should be run before this method """
-        rates = jnp.array([self.calculate_production_rate(gene, half_response, mean_expression) for gene in layer])
+        params = Params(self.regulators_dict, self.adjacency, self.repressive_dict)
+        rates = jnp.array([calculate_production_rate(params, gene, half_response, mean_expression) for gene in layer])
         rates = rates / self.decay_lambda
         return rates
-
-    @functools.partial(jax.jit, static_argnums=(0, 1))
-    def calculate_production_rate(self, gene, half_response, mean_expression):
-        regulators = self.regulators_dict[gene]
-        mean_expression = jnp.vstack(tuple([mean_expression[reg] for reg in regulators]))
-        absolute_k = jnp.abs(self.adjacency[regulators][:, gene])
-        half_response = half_response[gene]
-        is_repressive = self.repressive_dict[gene]
-        is_repressive_ = is_repressive[regulators]
-        hill_function = self.hill_function(mean_expression, half_response, is_repressive_)
-        rate = jnp.einsum("r,rt->t", absolute_k, hill_function)
-        return rate
-
-    def hill_function(self, regulators_concentration, half_response, is_repressive):
-        rate = (
-                jnp.power(regulators_concentration, self.hill_coefficient) /
-                (jnp.power(half_response, self.hill_coefficient) + jnp.power(regulators_concentration,
-                                                                             self.hill_coefficient))
-        )
-        rate2 = jnp.where(is_repressive, 1 - rate, rate)
-        return rate2
 
     @functools.partial(jax.jit, static_argnums=(0,))
     def euler_maruyama_master(self, curr_genes_expression, basal_production_rate, q, key: jax.random.PRNGKey):
@@ -210,6 +200,40 @@ class Sim:
         all_state = dw_d, dw_p
         gene_trajectory = jax.lax.scan(step, curr_genes_expression, all_state)[1]
         return gene_trajectory
+
+
+class Params:
+    def __init__(self, regulators_dict, adjacency, repressive_dict):
+        self.regulators_dict = regulators_dict
+        self.adjacency = adjacency
+        self.repressive_dict = repressive_dict
+
+
+def calculate_production_rate(params: Params, gene, half_response, mean_expression):
+    regulators = params.regulators_dict[gene]
+    mean_expression = jnp.vstack(tuple([mean_expression[reg] for reg in regulators]))
+    half_response = half_response[gene]
+    is_repressive = tuple(params.repressive_dict[gene][regulator] for regulator in regulators)
+    absolute_k = jnp.abs(params.adjacency[regulators][:, gene])
+
+    rate = hill_function(
+        mean_expression,
+        half_response,
+        is_repressive,
+        absolute_k
+    )
+    return rate
+
+
+@functools.partial(jax.jit, static_argnums=(2,))
+def hill_function(regulators_concentration, half_response, is_repressive, absolute_k):
+    is_repressive = jnp.array(is_repressive)  # LOL, jax.jit doesn't like static jnp.arrays..
+    nom = jnp.power(regulators_concentration, Sim.hill_coefficient)
+    denom = (jnp.power(half_response, Sim.hill_coefficient) + jnp.power(regulators_concentration, Sim.hill_coefficient))
+    rate = nom / denom
+    rate2 = jnp.where(is_repressive, 1 - rate, rate)
+    k_rate = jnp.einsum("r,rt->t", absolute_k, rate2)
+    return k_rate
 
 
 if __name__ == '__main__':
