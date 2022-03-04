@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import ttest_ind
 
-from src.load_utils import load_grn, topo_sort_graph_layers, get_basal_production_rate
+from src.load_utils import load_grn_jax, topo_sort_graph_layers, get_basal_production_rate
 from src.zoo_functions import is_debugger_active, plot_three_genes
 
 
@@ -43,7 +43,7 @@ class Sim:
         self.layers = None
 
     def build(self):
-        adjacency, graph = load_grn(self.interactions_filename, self.adjacency)
+        adjacency, graph = load_grn_jax(self.interactions_filename, self.adjacency)
         self.adjacency = jnp.array(adjacency)
         regulators, genes = np.where(self.adjacency)
 

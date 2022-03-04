@@ -8,6 +8,25 @@ import numpy as np
 
 # TODO: We actually don't need adjacency, just the number of genes
 def load_grn(interactions_filename, adjacency):
+    topo_sort_graph = nx.DiGraph()
+
+    with open(interactions_filename, 'r') as f:
+        for row in csv.reader(f, delimiter=','):
+            target_node_id, num_regulators = int(float(row.pop(0))), int(float(row.pop(0)))
+            regulators_nodes_ids = [int(float(row.pop(0))) for x in range(num_regulators)]
+            contributions = [float(row.pop(0)) for x in range(num_regulators)]
+            coop_state = [float(row.pop(0)) for x in range(num_regulators)]  # TODO add it
+
+            adjacency[regulators_nodes_ids, target_node_id] = contributions
+
+            topo_sort_graph.add_weighted_edges_from(
+                zip(regulators_nodes_ids, repeat(target_node_id), contributions)
+            )
+    return adjacency, topo_sort_graph
+
+
+# TODO: We actually don't need adjacency, just the number of genes
+def load_grn_jax(interactions_filename, adjacency):
     adjacency = np.zeros(shape=adjacency.shape)
     topo_sort_graph = nx.DiGraph()
 

@@ -23,7 +23,6 @@ class config():
     data = "./data/simulated_ds2_400genes_9types.npy"
     tensorboard = True
     num_genes = 400
-    num_cell_types = 9
     lr = 1e-3
     epochs = 300
     batch_size = 128
@@ -32,7 +31,7 @@ class config():
 
 
 config = config()
-experiment_buddy.register_defaults({'dataset': 'ds2', **config.__dict__})
+experiment_buddy.register_defaults({'dataset': 'ds2'})
 writer = experiment_buddy.deploy()
 
 
@@ -46,12 +45,10 @@ def train(filepath_training_data, epochs=200):
 
     # writer = config.writer
 
-    network = CellStateClassifier(num_genes=config.num_genes, num_cell_types=config.num_cell_types).to(device)
+    network = CellStateClassifier(num_genes=config.num_genes, num_cell_types=9).to(device)
     sgd = optim.SGD(network.parameters(), lr=config.lr, momentum=0.9)
-    if config.num_cell_types == 2:
-        criterium = nn.BCEWithLogitsLoss()
-    else:
-        criterium = nn.CrossEntropyLoss()
+    # criterium = nn.BCEWithLogitsLoss()
+    criterium = nn.CrossEntropyLoss()
 
     dataset = TranscriptomicsDataset(filepath_data=filepath_training_data, device=device)
     train_and_val_dataset = train_val_dataset(dataset, val_split=0.25)
