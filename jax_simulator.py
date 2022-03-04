@@ -268,5 +268,3 @@ if __name__ == '__main__':
     expr = AddTechnicalNoise(100, 9, simulation_num_steps, outlier_genes_noises, library_size_noises,
                              dropout_noises).get_noisy_technical_concentration(expr_clean.T)
     print(f"shape noisy data: {expr.shape}")
-
-    plot_three_genes(expr[0, 44], expr[0, 1], expr[0, 99], hlines=None, title="with technical noise\n")
