@@ -1,6 +1,19 @@
+import json
 import sys
-import matplotlib.pyplot as plt
+from collections import namedtuple
+
 import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torch.nn.functional
+import torch.nn.functional
+import jax.interpreters.ad
+from src.models.expert.classfier_cell_state import CellStateClassifier, torch_to_jax
+
+dataset_namedtuple = namedtuple('dataset', ('interactions', 'regulators', 'params_outliers_genes_noise',
+                              'params_library_size_noise', 'params_dropout_noise', 'tot_genes', 'tot_cell_types'))
 
 
 def is_debugger_active() -> bool:
@@ -55,3 +68,66 @@ def convert_mtx_matrix_to_csv_format(mex_dir, counts_filename, features_filename
     matrix.insert(loc=0, column="feature_type", value=feature_types)
 
     matrix.to_csv("mex_matrix.csv", index=False)
+
+
+def load_simulator(use_jax: bool, interactions_filepath, regulators_filepath, tot_genes, tot_cell_types,
+                   sim_tot_steps, noise_amplitude=0.8):
+    if use_jax:
+        from jax_simulator import Sim
+        sim = Sim(num_genes=tot_genes,
+                  num_cells_types=tot_cell_types,
+                  interactions_filepath=interactions_filepath,
+                  regulators_filepath=regulators_filepath,
+                  simulation_num_steps=sim_tot_steps,
+                  noise_amplitude=noise_amplitude,
+                  )
+        sim.build()
+        if is_debugger_active():
+            with jax.disable_jit():
+                x = sim.run_one_rollout()
+        else:
+            x = sim.run_one_rollout()
+
+        expr_clean = jnp.stack(tuple([x[gene] for gene in range(sim.num_genes)])).swapaxes(0, 1)
+    else:
+        from numpy_simulator import Sim
+        sim = Sim(num_genes=tot_genes,
+                  num_cells_types=tot_cell_types,
+                  num_cells_to_simulate=sim_tot_steps // 10,
+                  interactions=interactions_filepath,
+                  regulators=regulators_filepath,
+                  noise_amplitude=noise_amplitude,
+                  )
+        sim.run()
+        expr_clean = sim.x
+
+    return expr_clean
+
+
+def open_datasets_json(filepath: str = "data/data_sets_sergio.json", return_specific_dataset=None) -> dict:
+    with open(filepath) as json_file:
+        data_sets = json.load(json_file)
+        if return_specific_dataset is not None:
+            return data_sets[return_specific_dataset]
+        else:
+            return data_sets
+
+
+def classify(expr):
+    classifier = CellStateClassifier(num_genes=400, num_cell_types=9).to("cpu")
+    loaded_checkpoint = torch.load(
+        "src/models/expert/checkpoints/expert_ds2.pth", map_location=lambda storage, loc: storage)
+    classifier.load_state_dict(loaded_checkpoint)
+    classifier.eval()
+    classifier = torch_to_jax(classifier)
+
+    predictions = []  # [41, 64, 87, 49, 32, 38, 96, 57, 77] # [28, 89, 88, 35, 93, 64, 78, 91, 91]
+    for sample in range(expr.shape[0]):
+        output = classifier(expr[sample])
+        probs = torch.nn.functional.softmax(torch.Tensor(np.array(output)))
+        prediction = probs.argmax()
+        predictions.append(prediction)
+    print([np.sum(np.array(predictions[start:end]) == truth) for start, end, truth in
+           zip([0, 100, 200, 300, 400, 500, 600, 700, 800],
+               [100, 200, 300, 400, 500, 600, 700, 800, 900],
+               [0, 1, 2, 3, 4, 5, 6, 7, 8])])

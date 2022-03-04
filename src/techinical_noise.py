@@ -40,9 +40,10 @@ class AddTechnicalNoiseJax:
         )
 
         binary_ind, key = self._dropout_indicator(expr_O_L, shape=self.k_dropout, percentile=self.q_dropout)
-        print(f"binary shape: {binary_ind.shape}")
         expr_O_L_D = jnp.multiply(binary_ind, expr_O_L)
+
         count_matrix_umi_count_format = self._to_umi_counts(expr_O_L_D, key)
+        print(type(count_matrix_umi_count_format)); return count_matrix_umi_count_format
         noisy_concentration = jnp.concatenate(count_matrix_umi_count_format, axis=1)
 
         assert noisy_concentration.shape[0] == self.num_genes
@@ -62,7 +63,7 @@ class AddTechnicalNoiseJax:
             # scData[gIndx, :] = scData[gIndx, :] * outFactors[i]
             scData = scData.at[gIndx, :].set(scData[gIndx, :] * outFactors[i])
 
-        return jnp.split(scData, self.num_cell_types, axis=1)
+        return jnp.array(jnp.split(scData, self.num_cell_types, axis=1))
 
     def _library_size_effect(self, scData, mean, scale):
         """
@@ -86,7 +87,7 @@ class AddTechnicalNoiseJax:
 
         libFactors = np.random.lognormal(mean=mean, sigma=scale, size=(self.num_cell_types, self.num_simulated_cells))
         for binExprMatrix, binFactors in zip(scData, libFactors):
-            normalizFactors = np.sum(binExprMatrix, axis=0)
+            normalizFactors = jnp.sum(binExprMatrix, axis=0)
             binFactors = jnp.true_divide(binFactors, normalizFactors)
             binFactors = binFactors.reshape(1, self.num_simulated_cells)
             binFactors = jnp.repeat(binFactors, self.num_genes, axis=0)
@@ -116,7 +117,6 @@ class AddTechnicalNoiseJax:
         scData_log = jnp.log(jnp.add(scData, 1))
         log_mid_point = jnp.percentile(scData_log, percentile)
         prob_ber = jnp.true_divide(1, 1 + jnp.exp(-1 * shape * (scData_log - log_mid_point)))
-        # binary_ind = np.random.binomial(n=1, p=np.array(prob_ber))
         key = jax.random.PRNGKey(0)
         key, subkey = jax.random.split(key)
         subkeys = jax.random.split(subkey, prob_ber.shape[0])
@@ -125,7 +125,8 @@ class AddTechnicalNoiseJax:
 
     def _to_umi_counts(self, scData, key):
         key, subkey = jax.random.split(key)
-        return jax.random.poisson(key, lam=scData)
+        return jnp.array(jax.random.poisson(subkey, lam=jnp.array(scData))) # TODO output should be dynamics tracer
+        # but it'd not, why?
 
 
 class AddTechnicalNoise:

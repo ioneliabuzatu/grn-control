@@ -134,22 +134,26 @@ class CellStateClassifier(nn.Module):
 
         self.fc1 = nn.Linear(num_genes, num_genes * 2)
         self.fc2 = nn.Linear(num_genes * 2, num_genes * 3)
+        self.fcx = nn.Linear(num_genes * 3, num_genes // 2)
 
         if num_cell_types == 2:
             self.fc3 = nn.Linear(num_genes // 2, 1)
         else:
-            self.fc3 = nn.Linear(num_genes * 3, num_cell_types)
+            self.fc3 = nn.Linear(num_genes // 2, num_cell_types)
 
         torch.nn.init.xavier_uniform_(self.fc1.weight)
         torch.nn.init.xavier_uniform_(self.fc2.weight)
         torch.nn.init.xavier_uniform_(self.fc3.weight)
         self.fc1.bias.data.fill_(0.01)
         self.fc2.bias.data.fill_(0.01)
+        self.fcx.bias.data.fill_(0.01)
         # self.fc3.bias.data.fill_(0.01)
         self.classifier = nn.Sequential(
             self.fc1,
             nn.SELU(),
             self.fc2,
+            nn.SELU(),
+            self.fcx,
             nn.SELU(),
             self.fc3
         )
@@ -185,11 +189,10 @@ class TranscriptomicsDataset(Dataset):
 
     def __getitem__(self, idx):
         # data = self.data[idx, :-1]
-        data = self.data[idx]
-        # indices_to_set_to_zero = np.random.permutation(self.num_genes_to_zero_for_batch_sgd)
+        data = self.data[idx] # indices_to_set_to_zero = np.random.permutation(self.num_genes_to_zero_for_batch_sgd)
         # data = data[indices_to_set_to_zero]
         # data[indices_to_set_to_zero] = 0.0
-        x = torch.from_numpy(np.array(data, dtype=np.float32))
+        x = torch.tensor(data, dtype=torch.float32)
         y = torch.from_numpy(np.array(self.labels_categorical[idx], dtype=np.float32))
         del data
         return x, y
@@ -198,7 +201,10 @@ class TranscriptomicsDataset(Dataset):
         return len(self.data)
 
     def preprocess_data(self):
-        """ TODO: try TPM normalization too """
+        """
+        TODO: try TPM normalization too
+        what is TPM normalization:  https://www.rna-seqblog.com/rpkm-fpkm-and-tpm-clearly-explained/
+        """
         # x_normed = data / data.max(axis=1)
         if self.normalize_data:
             # self.data[1:, :-1] = normalize(self.data[1:, :-1], axis=1, norm="max")
@@ -222,6 +228,11 @@ def torch_to_jax(model=None):
         stax.Selu,
         stax.Dense(model.fc2.out_features, lambda *_: model.fc2.weight.detach().numpy().T,
                    lambda *_: model.fc2.bias.detach().numpy()),
+
+        stax.Selu,
+        stax.Dense(model.fcx.out_features, lambda *_: model.fcx.weight.detach().numpy().T,
+                   lambda *_: model.fcx.bias.detach().numpy()),
+
         stax.Selu,
         stax.Dense(model.fc3.out_features, lambda *_: model.fc3.weight.detach().numpy().T,
                    lambda *_: model.fc3.bias.detach().numpy()),

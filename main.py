@@ -1,4 +1,8 @@
 import time
+
+from matplotlib import pyplot as plt
+
+from src.zoo_functions import dataset_namedtuple, open_datasets_json
 import numpy as np
 
 import jax
@@ -21,7 +25,7 @@ def cross_entropy(logprobs, targets):
 
 
 def control(env, num_episodes, num_cell_types, num_master_genes, expert, visualise_samples_genes=False,
-            use_technical_noise=False, writer=None):
+         writer=None, add_technical_noise_function=None):
     start = time.time()
 
     def loss_fn(actions):
@@ -31,12 +35,9 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
         if visualise_samples_genes:
             plot_three_genes(expr.T[0, 44], expr.T[0, 1], expr.T[0, 99], hlines=None, title="expression")
 
-        if use_technical_noise:
-            outlier_genes_noises = (0.01, 0.8, 1)
-            library_size_noises = (6, 0.4)
-            dropout_noises = (12, 80)
-            expr = AddTechnicalNoiseJax(400, 9, 2, outlier_genes_noises, library_size_noises,
-                                        dropout_noises).get_noisy_technical_concentration(expr.T)
+        if add_technical_noise_function is not None:
+            expr = add_technical_noise_function.get_noisy_technical_concentration(expr.T).T
+            return expr.mean()
         else:
             expr = jnp.concatenate(expr, axis=1).T
 
@@ -45,6 +46,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
         targets = jnp.array([8] * output_classifier.shape[0])
         loss = -jnp.mean(jnp.sum(jax.nn.log_softmax(output_classifier).T * targets, axis=1))
         return loss
+        # return expr.mean()
 
     actions = jnp.ones(shape=(num_master_genes, num_cell_types))
 
@@ -53,38 +55,50 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
         loss, grad = jax.value_and_grad(loss_fn)(actions)
         grad = jnp.clip(grad, -1, 1)
         print("loss", loss)
-        print(f"grad shape: {grad.shape}")
-        actions += 0.001 * -grad
+        print(f"grad shape: {grad.shape} \n grad: {grad}")
+        actions += 0.01 * -grad
 
-        # writer.add_scalar(f"loss", loss, episode)
-        # writer.run.log({"grads": wandb.Image(sns.heatmap(grad.T, linewidth=0.5))}, step=episode)
-        # writer.run.log({"actions": wandb.Image(sns.heatmap(actions))}, step=episode)
+        writer.add_scalar(f"loss", loss, episode)
+        writer.run.log({"grads": wandb.Image(sns.heatmap(grad, linewidth=0.5))}, step=episode)
+        plt.close()
+        writer.run.log({"actions": wandb.Image(sns.heatmap(actions, linewidth=0.5))}, step=episode)
+        plt.close()
         print(f"episode#{episode} took {time.time() - start:.3f} secs.")
 
     print(f"Took {time.time() - start:.3f} secs.")
 
 
 if __name__ == "__main__":
-    params = {'num_genes': 400}
-    # experiment_buddy.register_defaults(params)
-    buddy = None #  experiment_buddy.deploy(host="")
+    params = {'num_genes': 100}
+    experiment_buddy.register_defaults(params)
+    buddy = experiment_buddy.deploy(host="")
 
-    expert_checkpoint_filepath = "src/models/expert/checkpoints/expert_ds2.pth"
-    classifier = CellStateClassifier(num_genes=400, num_cell_types=9).to("cpu")
+    dataset_dict = open_datasets_json(return_specific_dataset='DS1')
+    dataset = dataset_namedtuple(*dataset_dict.values())
+
+    expert_checkpoint_filepath = "src/models/expert/checkpoints/classifier_ds1.pth"
+    classifier = CellStateClassifier(num_genes=dataset.tot_genes, num_cell_types=dataset.tot_cell_types).to("cpu")
     loaded_checkpoint = torch.load(expert_checkpoint_filepath, map_location=lambda storage, loc: storage)
     classifier.load_state_dict(loaded_checkpoint)
     classifier.eval()
     classifier = torch_to_jax(classifier)
 
-    sim = Sim(num_genes=400, num_cells_types=9,
-              interactions_filepath="SERGIO/data_sets/De-noised_400G_9T_300cPerT_5_DS2/Interaction_cID_5.txt",
-              regulators_filepath="SERGIO/data_sets/De-noised_400G_9T_300cPerT_5_DS2/Regs_cID_5.txt",
-              simulation_num_steps=2,
-              )
+    sim = Sim(
+        num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types, simulation_num_steps=2,
+        interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators,
+    )
     sim.build()
+
+    add_technical_noise = AddTechnicalNoiseJax(
+        dataset.tot_genes, dataset.tot_cell_types, 2,
+        dataset.params_outliers_genes_noise, dataset.params_library_size_noise, dataset.params_dropout_noise
+    )
 
     if is_debugger_active():
         with jax.disable_jit():
             control(sim, 100, 9, num_master_genes=len(sim.layers[0]))
     else:
-        control(sim, 100, 9, len(sim.layers[0]), classifier, use_technical_noise=False, writer=buddy)
+        control(sim, dataset.tot_genes, dataset.tot_cell_types, len(sim.layers[0]), classifier,
+                writer=buddy,
+                add_technical_noise_function=add_technical_noise
+                )
