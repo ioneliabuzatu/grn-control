@@ -59,6 +59,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
         # writer.add_scalar(f"loss", loss, episode)
         # writer.run.log({"grads": wandb.Image(sns.heatmap(grad.T, linewidth=0.5))}, step=episode)
         # writer.run.log({"actions": wandb.Image(sns.heatmap(actions))}, step=episode)
+        print(f"episode#{episode} took {time.time() - start:.3f} secs.")
 
     print(f"Took {time.time() - start:.3f} secs.")
 
@@ -86,4 +87,4 @@ if __name__ == "__main__":
         with jax.disable_jit():
             control(sim, 100, 9, num_master_genes=len(sim.layers[0]))
     else:
-        control(sim, 2, 9, len(sim.layers[0]), classifier, use_technical_noise=False, writer=buddy)
+        control(sim, 100, 9, len(sim.layers[0]), classifier, use_technical_noise=False, writer=buddy)
