@@ -20,16 +20,19 @@ def cross_entropy(logprobs, targets):
     return -jnp.mean(jnp.sum(logprobs * targets, axis=1))
 
 
-def control(env, num_episodes, num_cell_types,  num_master_genes, visualise_samples_genes=False,
+def control(env, num_episodes, num_cell_types, num_master_genes, visualise_samples_genes=False,
             use_technical_noise=False):
     start = time.time()
-    classifier = CellStateClassifier(num_genes=400, num_cell_types=9).to("cpu")
-    loaded_checkpoint = torch.load(config().expert_checkpoint_filepath, map_location=lambda storage, loc: storage)
-    classifier.load_state_dict(loaded_checkpoint)
+    classifier = CellStateClassifier(num_genes=100, num_cell_types=9).to("cpu")
+    # loaded_checkpoint = torch.load(config().expert_checkpoint_filepath, map_location=lambda storage, loc: storage)
+    # classifier.load_state_dict(loaded_checkpoint)
     classifier.eval()
     classifier = torch_to_jax(classifier)
 
-    def loss_fn(actions, expert=classifier):
+    expert = classifier
+
+    @jax.jit
+    def loss_fn(actions):
         expr = env.run_one_rollout(actions)
         expr = jnp.stack(tuple([expr[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
 
@@ -40,14 +43,14 @@ def control(env, num_episodes, num_cell_types,  num_master_genes, visualise_samp
             outlier_genes_noises = (0.01, 0.8, 1)
             library_size_noises = (6, 0.4)
             dropout_noises = (12, 80)
-            expr = AddTechnicalNoise(400, 9, 2, outlier_genes_noises, library_size_noises,
-                                 dropout_noises).get_noisy_technical_concentration(expr.T)
+            expr = AddTechnicalNoise(100, 9, 2, outlier_genes_noises, library_size_noises,
+                                     dropout_noises).get_noisy_technical_concentration(expr.T)
         else:
             expr = jnp.concatenate(expr, axis=1).T
 
         print(expr.shape)
         output_classifier = expert(expr)
-        targets = jnp.array([8]*output_classifier.shape[0])
+        targets = jnp.array([8] * output_classifier.shape[0])
         loss = -jnp.mean(jnp.sum(jax.nn.log_softmax(output_classifier).T * targets, axis=1))
         return loss
 
@@ -65,15 +68,16 @@ def control(env, num_episodes, num_cell_types,  num_master_genes, visualise_samp
 
 
 if __name__ == "__main__":
-    sim = Sim(num_genes=400, num_cells_types=9,
-              interactions_filepath="SERGIO/data_sets/De-noised_400G_9T_300cPerT_5_DS2/Interaction_cID_5.txt",
-              regulators_filepath="SERGIO/data_sets/De-noised_400G_9T_300cPerT_5_DS2/Regs_cID_5.txt",
-              simulation_num_steps=2,
-              )
+    sim = Sim(
+        num_genes=100, num_cells_types=9,
+        interactions_filepath="data/Interaction_cID_4.txt",
+        regulators_filepath="data/Regs_cID_4.txt",
+        simulation_num_steps=2,
+    )
     sim.build()
 
-    if is_debugger_active():
-        with jax.disable_jit():
-            control(sim, 100, 9, num_master_genes=len(sim.layers[0]))
-    else:
-        control(sim, 100, 9, len(sim.layers[0]), use_technical_noise=True)
+    # if is_debugger_active():
+    #     with jax.disable_jit():
+    #         control(sim, 100, 9, num_master_genes=len(sim.layers[0]))
+    # else:
+    control(sim, 100, 9, len(sim.layers[0]), use_technical_noise=False)

@@ -1,4 +1,5 @@
 import csv
+import typing
 from itertools import repeat
 
 import networkx as nx
@@ -47,8 +48,8 @@ def load_grn_jax(interactions_filename, adjacency):
     return adjacency, topo_sort_graph
 
 
-def topo_sort_graph_layers(graph: nx.DiGraph):
-    layers = list(nx.topological_generations(graph))
+def topo_sort_graph_layers(graph: nx.DiGraph) -> typing.Tuple[np.ndarray, ...]:
+    layers = tuple(tuple(l) for l in nx.topological_generations(graph))
     return layers
 
 
