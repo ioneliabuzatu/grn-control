@@ -1,6 +1,6 @@
 import numpy as np
-<<<<<<< HEAD
 import jax.numpy as jnp
+import jax
 
 
 class AddTechnicalNoiseJax:
@@ -126,8 +126,6 @@ class AddTechnicalNoiseJax:
     def _to_umi_counts(self, scData, key):
         key, subkey = jax.random.split(key)
         return jax.random.poisson(key, lam=scData)
-=======
->>>>>>> parent of a8ff07a... Feature/train expert (#17)
 
 
 class AddTechnicalNoise:

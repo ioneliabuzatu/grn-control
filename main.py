@@ -36,12 +36,12 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
             library_size_noises = (6, 0.4)
             dropout_noises = (12, 80)
             expr = AddTechnicalNoiseJax(400, 9, 2, outlier_genes_noises, library_size_noises,
-                                     dropout_noises).get_noisy_technical_concentration(expr.T)
+                                        dropout_noises).get_noisy_technical_concentration(expr.T)
         else:
             expr = jnp.concatenate(expr, axis=1).T
 
         print(expr.shape)
-        output_classifier = expert(expr.T)
+        output_classifier = expert(expr)
         targets = jnp.array([8] * output_classifier.shape[0])
         loss = -jnp.mean(jnp.sum(jax.nn.log_softmax(output_classifier).T * targets, axis=1))
         return loss
@@ -56,31 +56,19 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
         print(f"grad shape: {grad.shape}")
         actions += 0.001 * -grad
 
-        writer.add_scalar(f"loss", loss, episode)
-        # writer.run.log({"gradients cell condition 0": wandb.Histogram(np_histogram=np.histogram(grad[0]))})
-        # writer.run.log({"gradients cell condition 1": wandb.Histogram(np_histogram=np.histogram(grad[1]))})
-        writer.run.log({"grads": wandb.Image(
-            sns.heatmap(grad.T,
-                        linewidth=0.5,
-        #                 xticklabels=config.disease_gene_names
-                        ))},
-                        step=episode
-        )
-
-        writer.run.log({"actions": wandb.Image(sns.heatmap(actions))}, step=episode) # , linewidth=0.5,
-                        # xticklabels=config.disease_gene_names
-
+        # writer.add_scalar(f"loss", loss, episode)
+        # writer.run.log({"grads": wandb.Image(sns.heatmap(grad.T, linewidth=0.5))}, step=episode)
+        # writer.run.log({"actions": wandb.Image(sns.heatmap(actions))}, step=episode)
 
     print(f"Took {time.time() - start:.3f} secs.")
 
 
 if __name__ == "__main__":
     params = {'num_genes': 400}
-    experiment_buddy.register_defaults(params)
-    buddy = experiment_buddy.deploy(host="")
+    # experiment_buddy.register_defaults(params)
+    buddy = None #  experiment_buddy.deploy(host="")
 
     expert_checkpoint_filepath = "src/models/expert/checkpoints/expert_ds2.pth"
-
     classifier = CellStateClassifier(num_genes=400, num_cell_types=9).to("cpu")
     loaded_checkpoint = torch.load(expert_checkpoint_filepath, map_location=lambda storage, loc: storage)
     classifier.load_state_dict(loaded_checkpoint)
@@ -98,4 +86,4 @@ if __name__ == "__main__":
         with jax.disable_jit():
             control(sim, 100, 9, num_master_genes=len(sim.layers[0]))
     else:
-        control(sim, 100, 9, len(sim.layers[0]), classifier, use_technical_noise=True, writer=buddy)
+        control(sim, 2, 9, len(sim.layers[0]), classifier, use_technical_noise=False, writer=buddy)
