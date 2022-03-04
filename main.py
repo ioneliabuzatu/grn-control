@@ -4,6 +4,9 @@ import jax
 import jax.numpy as jnp
 import torch
 
+from jax.example_libraries import optimizers
+
+
 from jax_simulator import Sim
 from src.models.expert.classfier_cell_state import CellStateClassifier
 from src.models.expert.classfier_cell_state import torch_to_jax
@@ -55,6 +58,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, visualise_sampl
         return loss
 
     actions = jnp.ones(shape=(num_master_genes, num_cell_types))
+    optimizer = optimizers.adam(step_size=0.01)
 
     for episode in range(num_episodes):
         print("Episode#", episode)

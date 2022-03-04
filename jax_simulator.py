@@ -101,7 +101,7 @@ class Sim:
 
             half_response = dict(zip(layer, self.calculate_half_response(tuple(layer), mean_expression)))
 
-            x_0.update(dict(zip(layer, self.init_concentration(tuple(layer), half_response, mean_expression, x))))
+            x_0.update(dict(zip(layer, self.init_concentration(tuple(layer), half_response, mean_expression))))
 
             curr_genes_expression = x_0
             params = Params(self.regulators_dict, self.adjacency, self.repressive_dict)
@@ -148,7 +148,7 @@ class Sim:
         return half_responses
 
     @functools.partial(jax.jit, static_argnums=(0, 1))
-    def init_concentration(self, layer: list, half_response, mean_expression, x):
+    def init_concentration(self, layer: list, half_response, mean_expression):
         """ Init concentration genes; Note: calculate_half_response should be run before this method """
         params = Params(self.regulators_dict, self.adjacency, self.repressive_dict)
         rates = jnp.array([calculate_production_rate(params, gene, half_response, mean_expression) for gene in layer])
