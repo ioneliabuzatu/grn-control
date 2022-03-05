@@ -21,17 +21,18 @@ from src.models.expert.classfier_cell_state import update
 
 class config():
     checkpoint_folder = "src/models/expert/checkpoints/"
-    data = "data/ds1_10k_each_type.npy"
+    data = "data/ds4_10k_each_type.npy"
     tensorboard = True
     num_genes = 100
-    lr = 1e-2
+    num_cell_types = 3
+    lr = 1e-3
     epochs = 500
     batch_size = 128
     samples_each_type = 10000
 
 
 config = config()
-experiment_buddy.register_defaults({'dataset': 'ds1', **config.__dict__})
+experiment_buddy.register_defaults({'dataset': 'ds4', **config.__dict__})
 writer = experiment_buddy.deploy()
 
 
@@ -45,7 +46,7 @@ def train(filepath_training_data, epochs=200):
 
     # writer = config.writer
 
-    network = CellStateClassifier(num_genes=config.num_genes, num_cell_types=9).to(device)
+    network = CellStateClassifier(num_genes=config.num_genes, num_cell_types=config.num_cell_types).to(device)
     sgd = optim.SGD(network.parameters(), lr=config.lr, momentum=0.9)
     # criterium = nn.BCEWithLogitsLoss()
     criterium = nn.CrossEntropyLoss()
@@ -72,7 +73,7 @@ def train(filepath_training_data, epochs=200):
             val_accuracy = mean_accuracy
             logging.info(f"Saving new model...new accuracy (val): {val_accuracy}")
             torch.save(network.state_dict(), os.path.join(
-                config.checkpoint_folder, "jax_data_classifier_ds1.pth")
+                config.checkpoint_folder, "classifier_ds4.pth")
                        )
 
 

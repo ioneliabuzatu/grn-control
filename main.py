@@ -46,7 +46,6 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
         targets = jnp.array([8] * output_classifier.shape[0])
         loss = -jnp.mean(jnp.sum(jax.nn.log_softmax(output_classifier).T * targets, axis=1))
         return loss
-        # return expr.mean()
 
     actions = jnp.ones(shape=(num_master_genes, num_cell_types))
 
@@ -73,10 +72,10 @@ if __name__ == "__main__":
     experiment_buddy.register_defaults(params)
     buddy = experiment_buddy.deploy(host="")
 
-    dataset_dict = open_datasets_json(return_specific_dataset='DS1')
+    dataset_dict = open_datasets_json(return_specific_dataset='DS4')
     dataset = dataset_namedtuple(*dataset_dict.values())
 
-    expert_checkpoint_filepath = "src/models/expert/checkpoints/classifier_ds1.pth"
+    expert_checkpoint_filepath = "src/models/expert/checkpoints/classifier_ds4.pth"
     classifier = CellStateClassifier(num_genes=dataset.tot_genes, num_cell_types=dataset.tot_cell_types).to("cpu")
     loaded_checkpoint = torch.load(expert_checkpoint_filepath, map_location=lambda storage, loc: storage)
     classifier.load_state_dict(loaded_checkpoint)
@@ -98,7 +97,7 @@ if __name__ == "__main__":
         with jax.disable_jit():
             control(sim, 100, 9, num_master_genes=len(sim.layers[0]))
     else:
-        control(sim, dataset.tot_genes, dataset.tot_cell_types, len(sim.layers[0]), classifier,
+        control(sim, 51, dataset.tot_cell_types, len(sim.layers[0]), classifier,
                 writer=buddy,
-                add_technical_noise_function=add_technical_noise
+                # add_technical_noise_function=add_technical_noise
                 )

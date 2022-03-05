@@ -55,5 +55,100 @@
     ],
     "tot_genes": 12000,
     "tot_cell_types": 9
+  },
+  "DS4": {
+    "interactions": "SERGIO/data_sets/De-noised_100G_3T_300cPerT_dynamics_9_DS4/Interaction_cID_9.txt",
+    "regulators": "SERGIO/data_sets/De-noised_100G_3T_300cPerT_dynamics_9_DS4/Regs_cID_9.txt",
+    "params_outliers_genes_noise": [
+      0.01,
+      3,
+      1
+    ],
+    "params_library_size_noise": [
+      6,
+      0.3
+    ],
+    "params_dropout_noise": [
+      8,
+      74
+    ],
+    "tot_genes": 100,
+    "tot_cell_types": 3
+  },
+  "DS5": {
+    "interactions": "SERGIO/data_sets/De-noised_100G_4T_300cPerT_dynamics_10_DS5/Interaction_cID_10.txt",
+    "regulators": "SERGIO/data_sets/De-noised_100G_4T_300cPerT_dynamics_10_DS5/Regs_cID_10.txt",
+    "params_outliers_genes_noise": [
+      0.01,
+      3,
+      1
+    ],
+    "params_library_size_noise": [
+      6,
+      0.4
+    ],
+    "params_dropout_noise": [
+      8,
+      82
+    ],
+    "tot_genes": 100,
+    "tot_cell_types": 4
+  },
+  "DS6": {
+    "interactions": "SERGIO/data_sets/De-noised_100G_6T_300cPerT_dynamics_7_DS6/Interaction_cID_7.txt",
+    "regulators": "SERGIO/data_sets/De-noised_100G_6T_300cPerT_dynamics_6_DS6/Regs_cID_7.txt",
+    "params_outliers_genes_noise": [
+      0.01,
+      5,
+      1
+    ],
+    "params_library_size_noise": [
+      4.5,
+      0.7
+    ],
+    "params_dropout_noise": [
+      8,
+      45
+    ],
+    "tot_genes": 100,
+    "tot_cell_types": 6
+  },
+  "DS7": {
+    "interactions": "SERGIO/data_sets/De-noised_100G_7T_300cPerT_dynamics_11_DS7/Interaction_cID_11.txt",
+    "regulators": "SERGIO/data_sets/De-noised_100G_7T_300cPerT_dynamics_11_DS7/Regs_cID_11.txt",
+    "params_outliers_genes_noise": [
+      0.01,
+      3,
+      1
+    ],
+    "params_library_size_noise": [
+      4.4,
+      0.8
+    ],
+    "params_dropout_noise": [
+      8,
+      85
+    ],
+    "tot_genes": 100,
+    "tot_cell_types": 7
+  },
+  "DS8": {
+    "interactions": "SERGIO/data_sets/De-noised_100G_3T_300cPerT_dynamics_8_DS8/Interaction_cID_8.txt",
+    "regulators": "SERGIO/data_sets/De-noised_100G_3T_300cPerT_dynamics_8_DS8/Regs_cID_8.txt",
+    "params_outliers_genes_noise": [
+      0.01,
+      4.5,
+      1
+    ],
+    "params_library_size_noise": [
+      10,
+      0.55
+    ],
+    "params_dropout_noise": [
+      2,
+      92
+    ],
+    "tot_genes": 100,
+    "tot_cell_types": 3
   }
 }
