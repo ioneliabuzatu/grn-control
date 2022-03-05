@@ -72,7 +72,7 @@ def train(filepath_training_data, epochs=200):
             val_accuracy = mean_accuracy
             logging.info(f"Saving new model...new accuracy (val): {val_accuracy}")
             torch.save(network.state_dict(), os.path.join(
-                config.checkpoint_folder, "classifier_ds1.pth")
+                config.checkpoint_folder, "jax_data_classifier_ds1.pth")
                        )
 
 
