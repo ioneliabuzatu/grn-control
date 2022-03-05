@@ -70,15 +70,15 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 if __name__ == "__main__":
     params = {'num_genes': 100}
     experiment_buddy.register_defaults(params)
-    buddy = experiment_buddy.deploy(host="")
+    buddy = experiment_buddy.deploy(host="", disabled=True)
 
-    dataset_dict = open_datasets_json(return_specific_dataset='DS4')
+    dataset_dict = open_datasets_json(return_specific_dataset='Dummy')
     dataset = dataset_namedtuple(*dataset_dict.values())
 
     expert_checkpoint_filepath = "src/models/expert/checkpoints/classifier_ds4.pth"
     classifier = CellStateClassifier(num_genes=dataset.tot_genes, num_cell_types=dataset.tot_cell_types).to("cpu")
-    loaded_checkpoint = torch.load(expert_checkpoint_filepath, map_location=lambda storage, loc: storage)
-    classifier.load_state_dict(loaded_checkpoint)
+    # loaded_checkpoint = torch.load(expert_checkpoint_filepath, map_location=lambda storage, loc: storage)
+    # classifier.load_state_dict(loaded_checkpoint)
     classifier.eval()
     classifier = torch_to_jax(classifier)
 
