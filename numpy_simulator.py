@@ -57,14 +57,14 @@ class Sim:
             production_rates = [self.calculate_production_rate(gene, basal_production_rate) for gene in layer]
             for step in range(1, self.simulation_time_steps):
                 curr_genes_expression = self.x[step - 1, layer]
-                dx = self.euler_maruyama(production_rates, curr_genes_expression, layer)
+                dx = self.euler_maruyama(production_rates, curr_genes_expression, list(layer))
 
                 updated_concentration_gene = curr_genes_expression + dx
                 self.x[step, layer] = updated_concentration_gene.clip(0)  # clipping is important!
 
             # self.mean_expression[layer] = np.mean(self.x[random_sampling_state][:, layer], axis=0)
             # self._x[:, layer] = self.x[random_sampling_state][:, layer]
-            self.mean_expression[layer] = np.mean(self.x[:, layer], axis=0)
+            self.mean_expression[list(layer)] = np.mean(self.x[:, list(layer)], axis=0)
 
 
     def calculate_half_response(self, layer):

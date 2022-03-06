@@ -38,12 +38,20 @@ class AddTechnicalNoiseJax:
             self.miu_library_size,
             scale=self.sigma_library_size
         )
-
         binary_ind, key = self._dropout_indicator(expr_O_L, shape=self.k_dropout, percentile=self.q_dropout)
         expr_O_L_D = jnp.multiply(binary_ind, expr_O_L)
 
-        count_matrix_umi_count_format = self._to_umi_counts(expr_O_L_D, key)
-        print(type(count_matrix_umi_count_format)); return count_matrix_umi_count_format
+        count_matrix_umi_count_format = jnp.array(self._to_umi_counts(expr_O_L_D, key))
+        types, genes, steps = count_matrix_umi_count_format.shape
+        for type in range(types):
+            for gene in range(genes):
+                for step in range(steps):
+                    if count_matrix_umi_count_format[type, gene, step] != 0:
+                        expr_O_L_D = expr_O_L_D.at[type, gene, step].set(
+                            count_matrix_umi_count_format[type, gene, step])
+        # print("**TODO** umi counts type should be tracer now is:", type(count_matrix_umi_count_format))
+        # return expr_O_L_D
+        return jnp.concatenate(expr_O_L_D, axis=1)
         noisy_concentration = jnp.concatenate(count_matrix_umi_count_format, axis=1)
 
         assert noisy_concentration.shape[0] == self.num_genes
@@ -63,7 +71,7 @@ class AddTechnicalNoiseJax:
             # scData[gIndx, :] = scData[gIndx, :] * outFactors[i]
             scData = scData.at[gIndx, :].set(scData[gIndx, :] * outFactors[i])
 
-        return jnp.array(jnp.split(scData, self.num_cell_types, axis=1))
+        return jnp.array(jnp.split(scData, self.num_cell_types, axis=1))  # TODO: check if this is correct
 
     def _library_size_effect(self, scData, mean, scale):
         """
@@ -119,13 +127,15 @@ class AddTechnicalNoiseJax:
         prob_ber = jnp.true_divide(1, 1 + jnp.exp(-1 * shape * (scData_log - log_mid_point)))
         key = jax.random.PRNGKey(0)
         key, subkey = jax.random.split(key)
-        subkeys = jax.random.split(subkey, prob_ber.shape[0])
         binary_ind = jax.random.bernoulli(subkey, p=prob_ber, shape=None)
         return binary_ind, key
 
     def _to_umi_counts(self, scData, key):
-        key, subkey = jax.random.split(key)
-        return jnp.array(jax.random.poisson(subkey, lam=jnp.array(scData))) # TODO output should be dynamics tracer
+        keys, subkey= jax.random.split(key)
+        return jax.random.poisson(keys, lam=jnp.array(scData), shape=None) # TODO output
+        # should be
+        # dynamics
+        # tracer
         # but it'd not, why?
 
 

@@ -18,6 +18,7 @@ from src.zoo_functions import plot_three_genes
 import experiment_buddy
 import wandb
 import seaborn as sns
+from jax.example_libraries import optimizers
 
 
 def cross_entropy(logprobs, targets):
@@ -25,9 +26,10 @@ def cross_entropy(logprobs, targets):
 
 
 def control(env, num_episodes, num_cell_types, num_master_genes, expert, visualise_samples_genes=False,
-         writer=None, add_technical_noise_function=None):
+            writer=None, add_technical_noise_function=None):
     start = time.time()
 
+    @jax.jit
     def loss_fn(actions):
         expr = env.run_one_rollout(actions)
         expr = jnp.stack(tuple([expr[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
@@ -37,32 +39,36 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 
         if add_technical_noise_function is not None:
             expr = add_technical_noise_function.get_noisy_technical_concentration(expr.T).T
-            return expr.mean()
         else:
             expr = jnp.concatenate(expr, axis=1).T
 
         print(expr.shape)
         output_classifier = expert(expr)
-        targets = jnp.array([8] * output_classifier.shape[0])
-        loss = -jnp.mean(jnp.sum(jax.nn.log_softmax(output_classifier).T * targets, axis=1))
+        targets = jnp.array([0] * output_classifier.shape[0])
+        # jnp.mean(jnp.sum(output_classifier * jnp.eye(3)[targets], axis=1))
+        loss = jnp.mean(output_classifier[:, 0])
         return loss
 
-    actions = jnp.ones(shape=(num_master_genes, num_cell_types))
+    opt_init, opt_update, get_params = optimizers.adam(step_size=0.001)
+    opt_state = opt_init(jnp.ones(shape=(num_master_genes, num_cell_types)))
 
-    for episode in range(num_episodes):
-        print("Episode#", episode)
+    def update(episode, opt_state_):
+        actions = get_params(opt_state_)
         loss, grad = jax.value_and_grad(loss_fn)(actions)
         grad = jnp.clip(grad, -1, 1)
         print("loss", loss)
         print(f"grad shape: {grad.shape} \n grad: {grad}")
-        actions += 0.01 * -grad
-
         writer.add_scalar(f"loss", loss, episode)
         writer.run.log({"grads": wandb.Image(sns.heatmap(grad, linewidth=0.5))}, step=episode)
         plt.close()
         writer.run.log({"actions": wandb.Image(sns.heatmap(actions, linewidth=0.5))}, step=episode)
         plt.close()
         print(f"episode#{episode} took {time.time() - start:.3f} secs.")
+        return opt_update(episode, grad, opt_state_)
+
+    for episode in range(num_episodes):
+        print("Episode#", episode)
+        opt_state = update(episode, opt_state)
 
     print(f"Took {time.time() - start:.3f} secs.")
 
@@ -70,7 +76,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 if __name__ == "__main__":
     params = {'num_genes': 100}
     experiment_buddy.register_defaults(params)
-    buddy = experiment_buddy.deploy(host="")
+    buddy = experiment_buddy.deploy(host="", disabled=True)
 
     dataset_dict = open_datasets_json(return_specific_dataset='DS4')
     dataset = dataset_namedtuple(*dataset_dict.values())
@@ -84,7 +90,7 @@ if __name__ == "__main__":
 
     sim = Sim(
         num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types, simulation_num_steps=2,
-        interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators,
+        interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.9
     )
     sim.build()
 
@@ -95,9 +101,11 @@ if __name__ == "__main__":
 
     if is_debugger_active():
         with jax.disable_jit():
-            control(sim, 100, 9, num_master_genes=len(sim.layers[0]))
+            control(sim, 100, dataset.tot_cell_types, len(sim.layers[0]), classifier,
+                    writer=buddy,
+                    add_technical_noise_function=add_technical_noise)
     else:
         control(sim, 51, dataset.tot_cell_types, len(sim.layers[0]), classifier,
                 writer=buddy,
-                # add_technical_noise_function=add_technical_noise
+                add_technical_noise_function=add_technical_noise
                 )
