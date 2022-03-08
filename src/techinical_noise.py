@@ -40,18 +40,19 @@ class AddTechnicalNoiseJax:
         )
         binary_ind, key = self._dropout_indicator(expr_O_L, shape=self.k_dropout, percentile=self.q_dropout)
         expr_O_L_D = jnp.multiply(binary_ind, expr_O_L)
+        return jnp.concatenate(expr_O_L_D, axis=1)
 
         count_matrix_umi_count_format = jnp.array(self._to_umi_counts(expr_O_L_D, key))
-        types, genes, steps = count_matrix_umi_count_format.shape
-        for type in range(types):
-            for gene in range(genes):
-                for step in range(steps):
-                    if count_matrix_umi_count_format[type, gene, step] != 0:
-                        expr_O_L_D = expr_O_L_D.at[type, gene, step].set(
-                            count_matrix_umi_count_format[type, gene, step])
-        # print("**TODO** umi counts type should be tracer now is:", type(count_matrix_umi_count_format))
-        # return expr_O_L_D
-        return jnp.concatenate(expr_O_L_D, axis=1)
+        # types, genes, steps = count_matrix_umi_count_format.shape
+        # for type in range(types):
+        #     for gene in range(genes):
+        #         for step in range(steps):
+        #             if count_matrix_umi_count_format[type, gene, step] != 0:
+        #                 expr_O_L_D = expr_O_L_D.at[type, gene, step].set(
+        #                     count_matrix_umi_count_format[type, gene, step])
+        # # print("**TODO** umi counts type should be tracer now is:", type(count_matrix_umi_count_format))
+        # # return expr_O_L_D
+        # return jnp.concatenate(expr_O_L_D, axis=1)
         noisy_concentration = jnp.concatenate(count_matrix_umi_count_format, axis=1)
 
         assert noisy_concentration.shape[0] == self.num_genes

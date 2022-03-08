@@ -96,7 +96,7 @@
   },
   "DS6": {
     "interactions": "SERGIO/data_sets/De-noised_100G_6T_300cPerT_dynamics_7_DS6/Interaction_cID_7.txt",
-    "regulators": "SERGIO/data_sets/De-noised_100G_6T_300cPerT_dynamics_6_DS6/Regs_cID_7.txt",
+    "regulators": "SERGIO/data_sets/De-noised_100G_6T_300cPerT_dynamics_7_DS6/Regs_cID_7.txt",
     "params_outliers_genes_noise": [
       0.01,
       5,
