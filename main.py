@@ -1,23 +1,20 @@
 import time
 
-from matplotlib import pyplot as plt
-
-from src.zoo_functions import dataset_namedtuple, open_datasets_json
-import numpy as np
-
+import experiment_buddy
 import jax
 import jax.numpy as jnp
-import torch
+import numpy as np
+import seaborn as sns
+import wandb
+from matplotlib import pyplot as plt
 
 from jax_simulator import Sim
 from src.models.expert.classfier_cell_state import CellStateClassifier
 from src.models.expert.classfier_cell_state import torch_to_jax
 from src.techinical_noise import AddTechnicalNoiseJax
+from src.zoo_functions import dataset_namedtuple, open_datasets_json
 from src.zoo_functions import is_debugger_active
 from src.zoo_functions import plot_three_genes
-import experiment_buddy
-import wandb
-import seaborn as sns
 
 
 def cross_entropy(logprobs, targets):
@@ -25,12 +22,19 @@ def cross_entropy(logprobs, targets):
 
 
 def control(env, num_episodes, num_cell_types, num_master_genes, expert, visualise_samples_genes=False,
-         writer=None, add_technical_noise_function=None):
+            writer=None, add_technical_noise_function=None):
     start = time.time()
+    x0 = None
+    xt = None
 
     def loss_fn(actions):
+        nonlocal x0, xt
+
         expr = env.run_one_rollout(actions)
         expr = jnp.stack(tuple([expr[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
+        if x0 is None:
+            x0 = np.array(expr.primal)
+        xt = np.array(expr.primal)
 
         if visualise_samples_genes:
             plot_three_genes(expr.T[0, 44], expr.T[0, 1], expr.T[0, 99], hlines=None, title="expression")
@@ -64,6 +68,10 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
         plt.close()
         print(f"episode#{episode} took {time.time() - start:.3f} secs.")
 
+        desired_concentration = x0[:, :, :1]
+        print("Distance from initial state:", jnp.linalg.norm(x0 - xt))
+        print("Distance from cell_type 0:", jnp.linalg.norm(np.tile(desired_concentration, (1, 1, num_cell_types)) - xt))
+
     print(f"Took {time.time() - start:.3f} secs.")
 
 
@@ -95,7 +103,7 @@ if __name__ == "__main__":
 
     if is_debugger_active():
         with jax.disable_jit():
-            control(sim, 100, 9, num_master_genes=len(sim.layers[0]), expert=classifier, writer=buddy,)
+            control(sim, 100, 9, num_master_genes=len(sim.layers[0]), expert=classifier, writer=buddy, )
     else:
         control(sim, 51, dataset.tot_cell_types, len(sim.layers[0]), expert=classifier, writer=buddy,
                 # add_technical_noise_function=add_technical_noise
