@@ -95,9 +95,8 @@ if __name__ == "__main__":
 
     if is_debugger_active():
         with jax.disable_jit():
-            control(sim, 100, 9, num_master_genes=len(sim.layers[0]))
+            control(sim, 100, 9, num_master_genes=len(sim.layers[0]), expert=classifier, writer=buddy,)
     else:
-        control(sim, 51, dataset.tot_cell_types, len(sim.layers[0]), classifier,
-                writer=buddy,
+        control(sim, 51, dataset.tot_cell_types, len(sim.layers[0]), expert=classifier, writer=buddy,
                 # add_technical_noise_function=add_technical_noise
                 )

@@ -216,13 +216,16 @@ def calculate_production_rate(params: Params, gene, half_response, mean_expressi
     is_repressive = tuple(params.repressive_dict[gene][regulator] for regulator in regulators)
     absolute_k = jnp.abs(params.adjacency[regulators][:, gene])
 
-    rate = hill_function(
-        mean_expression,
-        half_response,
-        is_repressive,
-        absolute_k
-    )
-    return rate
+    @jax.jit
+    def hf(me):
+        rate = hill_function(
+            me,
+            half_response,
+            is_repressive,
+            absolute_k
+        )
+        return rate
+    return hf(mean_expression)
 
 
 @functools.partial(jax.jit, static_argnums=(2,))
