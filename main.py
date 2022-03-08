@@ -54,7 +54,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 
         print(expr.shape)
         output_classifier = expert(expr)
-        loss = cross_entropy(output_classifier, 0)
+        loss = cross_entropy(output_classifier, 2)
 
         return -loss, expr
 
@@ -108,12 +108,12 @@ if __name__ == "__main__":
 
     # manual calculation of some distance matrix
     mean_samples_wise_t0 = ds4_ground_truth_initial_dist[:10000].mean(axis=0)
-    mean_samples_wise_t1 = ds4_ground_truth_initial_dist[20000:10000].mean(axis=0)
+    mean_samples_wise_t1 = ds4_ground_truth_initial_dist[10000:20000].mean(axis=0)
     mean_samples_wise_t2 = ds4_ground_truth_initial_dist[20000:].mean(axis=0)
-    d01 = mean_samples_wise_t0-mean_samples_wise_t1
-    d02 = mean_samples_wise_t0-mean_samples_wise_t2
-    d12 = mean_samples_wise_t1-mean_samples_wise_t2
-    print(f"distances: \n 0 <-> 1 {d01.sum()} \n 0 <-> 2 {d02.sum()} \n 1 <-> 2 {d12.sum()}")
+    d01 = mean_samples_wise_t0 - mean_samples_wise_t1
+    d02 = mean_samples_wise_t0 - mean_samples_wise_t2
+    d12 = mean_samples_wise_t1 - mean_samples_wise_t2
+    print(f"distances: \n 0 <-> 1 {abs(d01.sum()):3f} \n 0 <-> 2 {abs(d02.sum()):3f} \n 1 <-> 2 {abs(d12.sum()):3f}")
 
     dataset_dict = open_datasets_json(return_specific_dataset='DS4')
     dataset = dataset_namedtuple(*dataset_dict.values())
@@ -126,7 +126,8 @@ if __name__ == "__main__":
     classifier = torch_to_jax(classifier)
 
     sim = Sim(
-        num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types, simulation_num_steps=params['NUM_SIM_CELLS'],
+        num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types,
+        simulation_num_steps=params['NUM_SIM_CELLS'],
         interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.9
     )
     sim.build()
