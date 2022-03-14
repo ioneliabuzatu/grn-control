@@ -148,12 +148,13 @@ class AddTechnicalNoise:
 
     def __init__(self, num_genes: int, num_cell_types: int, num_simulated_cells: int, outlier_genes_noises: tuple,
                  library_size_noises: tuple,
-                 dropout_noises: tuple):
+                 dropout_noises: tuple, seed: int = 0):
         """
         @:param num_genes: number of genes
         @:param outlier_genes_noises: the noise of the outlier genes (pie, miu, sigma)
         @:param library_size_noises: the noise of the library size (miu, sigma)
         @:param dropout_noises: the noise of the dropout (k, q)
+        @:param seed: np seed for numpy rng; included for experiments reproducibility purpose
 
         this is the technical noise from the scRNA sequencing machine/ for seqFISH data
         those noises are data-driven parameters, have to be calculated from the real count matrix data
@@ -164,6 +165,9 @@ class AddTechnicalNoise:
         self.pie_outlier_genes, self.miu_outlier_genes, self.sigma_outlier_genes = outlier_genes_noises
         self.miu_library_size, self.sigma_library_size = library_size_noises
         self.k_dropout, self.q_dropout = dropout_noises
+        self.seed = seed
+
+        np.random.seed(seed=self.seed)  # Set the initial seed
 
     def get_noisy_technical_concentration(self, clean_concentration):
         assert clean_concentration.shape[1] == self.num_genes
