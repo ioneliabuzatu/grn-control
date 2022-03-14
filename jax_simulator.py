@@ -41,6 +41,11 @@ class Sim:
         self.dt = 0.01
 
         self.layers = None
+        self.seed = 0  # random seed for jax random generator
+
+    def next_seed(self):
+        """Quick seed change for next rollout"""
+        self.seed += 1
 
     def build(self):
         adjacency, graph = load_grn_jax(self.interactions_filename, self.adjacency)
@@ -76,11 +81,12 @@ class Sim:
             basal_production_rates = jnp.array(
                 get_basal_production_rate(self.regulators_filename, self.num_genes, self.num_cell_types))
 
-        x = self.simulate_expression_layer_wise(basal_production_rates)
+        self.next_seed()
+        x = self.simulate_expression_layer_wise(basal_production_rates, seed=self.seed)
         return x
 
-    def simulate_expression_layer_wise(self, basal_production_rates):
-        key = jax.random.PRNGKey(0)
+    def simulate_expression_layer_wise(self, basal_production_rates, seed=0):
+        key = jax.random.PRNGKey(seed)
         key, subkey = jax.random.split(key)
         subkeys = jax.random.split(subkey, self.num_cell_types)
 
