@@ -131,3 +131,20 @@ def classify(expr):
            zip([0, 100, 200, 300, 400, 500, 600, 700, 800],
                [100, 200, 300, 400, 500, 600, 700, 800, 900],
                [0, 1, 2, 3, 4, 5, 6, 7, 8])])
+
+
+def create_plot_graph(graph, verbose=False, dataset_name="rename.png"):
+    """
+    param graph: the graph from sim.build()
+    param verbose: if true the graphs is not clattered
+    param dataset_name: name to save the plot
+    """
+    if not dataset_name.endswith(".png"):
+        dataset_name = dataset_name + ".png"
+
+    if verbose:
+        p = nx.drawing.nx_pydot.to_pydot(graph)
+        p.write_png(dataset_name)
+        return
+    nx.draw(graph, cmap=plt.get_cmap('jet'), pos=graphviz_layout(graph, prog='dot'), with_labels=True)
+    plt.savefig(dataset_name)

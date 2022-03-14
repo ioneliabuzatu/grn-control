@@ -94,7 +94,7 @@ if __name__ == "__main__":
     plt_mean = np.mean(ds4_ground_truth_initial_dist, axis=0)
     plt_std = np.std(ds4_ground_truth_initial_dist, axis=0)
 
-    params = {'num_genes': 100, 'NUM_SIM_CELLS': 2}
+    params = {'num_genes': 100, 'NUM_SIM_CELLS': 100}
     experiment_buddy.register_defaults(params)
     buddy = experiment_buddy.deploy(host="", disabled=False)
     fig = plt.figure(figsize=(10, 7))
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     sim = Sim(
         num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types,
         simulation_num_steps=params['NUM_SIM_CELLS'],
-        interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.9
+        interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.5
     )
     sim.build()
 
@@ -145,5 +145,5 @@ if __name__ == "__main__":
     else:
         control(sim, 100, dataset.tot_cell_types, len(sim.layers[0]), classifier,
                 writer=buddy,
-                add_technical_noise_function=add_technical_noise
+                # add_technical_noise_function=add_technical_noise
                 )

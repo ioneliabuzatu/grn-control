@@ -1,4 +1,5 @@
 import functools
+from src.zoo_functions import create_plot_graph
 import torch
 # from src.models.expert.classfier_cell_state import CellStateClassifier, torch_to_jax
 from src.techinical_noise import AddTechnicalNoise
@@ -12,7 +13,7 @@ import numpy as np
 from scipy.stats import ttest_ind
 
 from src.load_utils import load_grn_jax, topo_sort_graph_layers, get_basal_production_rate
-from src.zoo_functions import is_debugger_active, plot_three_genes
+from src.zoo_functions import is_debugger_active, plot_three_genes, open_datasets_json, dataset_namedtuple
 
 
 class Sim:
@@ -22,7 +23,6 @@ class Sim:
                  interactions_filepath: str, regulators_filepath: str,
                  simulation_num_steps: int, num_samples_from_trajectory: int = None,
                  noise_amplitude: float = 1.,
-                 add_technical_noise: bool = True,
                  **kwargs):
 
         self.num_genes = num_genes
@@ -64,6 +64,7 @@ class Sim:
         self.repressive_dict = tuple(repressive_list)
 
         self.layers = topo_sort_graph_layers(graph)
+        return adjacency, graph, self.layers
 
     def run_one_rollout(self, actions=None):
         """return the gene expression of shape [samples, genes]"""
@@ -239,14 +240,18 @@ def hill_function(regulators_concentration, half_response, is_repressive, absolu
 if __name__ == '__main__':
     start = time()
     simulation_num_steps = 10000
-
-    sim = Sim(num_genes=100, num_cells_types=9,
-              interactions_filepath="data/Interaction_cID_4.txt",
-              regulators_filepath="data/Regs_cID_4.txt",
+    which_dataset_name = "DS4"
+    dataset_dict = open_datasets_json(return_specific_dataset=which_dataset_name)
+    dataset = dataset_namedtuple(*dataset_dict.values())
+    sim = Sim(num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types,
+              interactions_filepath=dataset.interactions,
+              regulators_filepath=dataset.regulators,
               simulation_num_steps=simulation_num_steps,
               noise_amplitude=0.8,
               )
-    sim.build()
+    adjacency, graph, layers = sim.build()
+
+    create_plot_graph(graph, verbose=False, dataset_name=f"{which_dataset_name}.png")
 
     if is_debugger_active():
         with jax.disable_jit():
@@ -254,17 +259,17 @@ if __name__ == '__main__':
             sim.simulation_num_steps = simulation_num_steps
             x = sim.run_one_rollout()
     else:
-        x = sim.run_one_rollout()
+        actions = jnp.array(np.load("data/actions_ds4.npy"))
+        x = sim.run_one_rollout(actions)
 
     expr_clean = jnp.stack(tuple([x[gene] for gene in range(sim.num_genes)])).swapaxes(0, 1)
 
     print(expr_clean.shape)
-    print(f"time: {time() - start}")
+    print(f"time: {time() - start}.3f")
     plot_three_genes(expr_clean.T[0, 44], expr_clean.T[0, 1], expr_clean.T[0, 99], hlines=None, title="expression")
 
-    outlier_genes_noises = (0.01, 0.8, 1)
-    library_size_noises = (6, 0.4)
-    dropout_noises = (12, 80)
-    expr = AddTechnicalNoise(100, 9, simulation_num_steps, outlier_genes_noises, library_size_noises,
-                             dropout_noises).get_noisy_technical_concentration(expr_clean.T)
+    expr = AddTechnicalNoise(dataset.tot_genes, dataset.tot_cell_types, simulation_num_steps,
+                             dataset.params_outliers_genes_noise,
+                             dataset.params_library_size_noise,
+                             dataset.params_dropout_noise).get_noisy_technical_concentration(expr_clean.T)
     print(f"shape noisy data: {expr.shape}")
