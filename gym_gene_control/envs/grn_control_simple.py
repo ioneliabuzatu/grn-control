@@ -1,27 +1,61 @@
 import gym
-from gym import error, spaces, utils
-from gym.utils import seeding
+import jax
+import jax.numpy as jnp
+import numpy as np
+from gym import spaces
+
+import jax_simulator
+import src.models.expert.classfier_cell_state
+import src.techinical_noise
+import src.zoo_functions
 
 
 class GRNControlSimpleEnv(gym.Env):
+    target_gene_type = 2
     metadata = {'render.modes': ['human']}
 
     def __init__(self):
-        # TODO
-        ...
+        params = {'num_genes': 100, 'NUM_SIM_CELLS': 100}
 
+        dataset_dict = src.zoo_functions.open_datasets_json(return_specific_dataset='Dummy')
+        dataset = src.zoo_functions.dataset_namedtuple(*dataset_dict.values())
+        self.sim = jax_simulator.Sim(
+            num_genes=params["num_genes"],
+            num_cells_types=params["NUM_SIM_CELLS"],
+            simulation_num_steps=params['NUM_SIM_CELLS'],
+            interactions_filepath=dataset.interactions,
+            regulators_filepath=dataset.regulators,
+            noise_amplitude=0.5
+        )
+        self.sim.build()
+        self.action_space = spaces.Box(low=np.zeros(self.sim.num_genes), high=np.ones(self.sim.num_genes))
+        self.observation_space = spaces.Box(low=np.zeros(self.sim.num_genes), high=np.ones(self.sim.num_genes))
+        self.initial_state = None
+
+    @jax.jit
     def step(self, action):
-        # TODO
-        ...
+        final_gene_expression = self.sim.run_one_rollout(action)
+
+        final_gene_expression = jnp.stack(tuple([final_gene_expression[gene] for gene in range(
+            self.sim.num_genes)])).swapaxes(0, 1)
+        final_gene_expression = jnp.concatenate(final_gene_expression, axis=1).T
+
+        target_gene_expression = self.initial_state[:, :, self.target_gene_type]
+        dist = np.linalg.norm(final_gene_expression - target_gene_expression[self.target_gene_type])
+
+        reward = -dist
+        done = False
+
+        # TODO: return bad reward if there is no convergence
+        return final_gene_expression, reward, done, {}
 
     def reset(self):
-        # TODO
-        ...
+        if self.initial_state is None:
+            self.initial_state, _, _, _ = self.step(np.zeros(self.sim.num_genes))
+        return self.initial_state
 
     def render(self, mode='human'):
-        # TODO
-        ...
+        raise NotImplemented
 
     def close(self):
-        # TODO
-        ...
+        raise NotImplemented
