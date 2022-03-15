@@ -32,13 +32,9 @@ class GRNControlSimpleEnv(gym.Env):
         self.observation_space = spaces.Box(low=np.zeros(self.sim.num_genes), high=np.ones(self.sim.num_genes))
         self.initial_state = None
 
-    @jax.jit
     def step(self, action):
-        final_gene_expression = self.sim.run_one_rollout(action)
-
-        final_gene_expression = jnp.stack(tuple([final_gene_expression[gene] for gene in range(
-            self.sim.num_genes)])).swapaxes(0, 1)
-        final_gene_expression = jnp.concatenate(final_gene_expression, axis=1).T
+        final_gene_expression_dict = self.sim.run_one_rollout(action)
+        final_gene_expression = self.to_numpy(final_gene_expression_dict)
 
         target_gene_expression = self.initial_state[:, :, self.target_gene_type]
         dist = np.linalg.norm(final_gene_expression - target_gene_expression[self.target_gene_type])
@@ -49,9 +45,15 @@ class GRNControlSimpleEnv(gym.Env):
         # TODO: return bad reward if there is no convergence
         return final_gene_expression, reward, done, {}
 
+    def to_numpy(self, final_gene_expression):
+        final_gene_expression = jnp.stack(tuple([final_gene_expression[gene] for gene in range(self.sim.num_genes)])).swapaxes(0, 1)
+        final_gene_expression = jnp.concatenate(final_gene_expression, axis=1).T
+        return final_gene_expression
+
     def reset(self):
         if self.initial_state is None:
-            self.initial_state, _, _, _ = self.step(np.zeros(self.sim.num_genes))
+            action = jnp.zeros(self.sim.num_genes)
+            self.initial_state = self.to_numpy(self.sim.run_one_rollout(action))
         return self.initial_state
 
     def render(self, mode='human'):
@@ -59,3 +61,13 @@ class GRNControlSimpleEnv(gym.Env):
 
     def close(self):
         raise NotImplemented
+
+
+if __name__ == '__main__':
+    env = GRNControlSimpleEnv()
+    x = env.reset()
+    print(x)
+    for _ in range(100):
+        action = env.action_space.sample()
+        x, _, _, _ = env.step(action)
+        print(x)
