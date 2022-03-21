@@ -20,6 +20,7 @@ import wandb
 import seaborn as sns
 from jax.example_libraries import optimizers
 from scipy.spatial import distance_matrix
+from src.all_about_visualization import plot_heatmap_all_expressions
 
 
 def cross_entropy(logprobs, targets):
@@ -94,7 +95,7 @@ if __name__ == "__main__":
     plt_mean = np.mean(ds4_ground_truth_initial_dist, axis=0)
     plt_std = np.std(ds4_ground_truth_initial_dist, axis=0)
 
-    params = {'num_genes': 100, 'NUM_SIM_CELLS': 100}
+    params = {'num_genes': 100, 'NUM_SIM_CELLS': 30}
     experiment_buddy.register_defaults(params)
     buddy = experiment_buddy.deploy(host="", disabled=False)
     fig = plt.figure(figsize=(10, 7))
@@ -128,9 +129,15 @@ if __name__ == "__main__":
     sim = Sim(
         num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types,
         simulation_num_steps=params['NUM_SIM_CELLS'],
-        interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.5
+        interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.8
     )
-    sim.build()
+    adjacency, graph, layers = sim.build()
+
+    fig = plot_heatmap_all_expressions(
+        ds4_ground_truth_initial_dist.reshape(3, 100, 10000).mean(2).T,
+        layers[0],
+        show=False)
+    buddy.run.log({"heatmap/expression/gd": wandb.Image(fig)}, step=0)
 
     add_technical_noise = AddTechnicalNoiseJax(
         dataset.tot_genes, dataset.tot_cell_types, params['NUM_SIM_CELLS'],

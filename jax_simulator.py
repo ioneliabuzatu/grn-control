@@ -1,4 +1,7 @@
 import functools
+
+import seaborn as sns
+from bioinfokit import analys, visuz
 from src.zoo_functions import create_plot_graph
 import torch
 # from src.models.expert.classfier_cell_state import CellStateClassifier, torch_to_jax
@@ -14,7 +17,7 @@ from scipy.stats import ttest_ind
 
 from src.load_utils import load_grn_jax, topo_sort_graph_layers, get_basal_production_rate
 from src.zoo_functions import is_debugger_active, plot_three_genes, open_datasets_json, dataset_namedtuple
-
+from src.all_about_visualization import plot_heatmap_all_expressions
 
 class Sim:
     hill_coefficient = 2
@@ -270,6 +273,9 @@ if __name__ == '__main__':
 
     expr_clean = jnp.stack(tuple([x[gene] for gene in range(sim.num_genes)])).swapaxes(0, 1)
 
+    plot_heatmap_all_expressions(expr_clean.mean(0), layers[0], show=True, close=False)
+    plt.close()
+
     print(expr_clean.shape)
     print(f"time: {time() - start}.3f")
     plot_three_genes(expr_clean.T[0, 44], expr_clean.T[0, 1], expr_clean.T[0, 99], hlines=None, title="expression")
@@ -279,3 +285,4 @@ if __name__ == '__main__':
                              dataset.params_library_size_noise,
                              dataset.params_dropout_noise).get_noisy_technical_concentration(expr_clean.T)
     print(f"shape noisy data: {expr.shape}")
+    plot_heatmap_all_expressions(expr.reshape(3, 100, 10).mean(2).T, layers[0], show=True)
