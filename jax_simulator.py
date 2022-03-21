@@ -19,6 +19,7 @@ from src.load_utils import load_grn_jax, topo_sort_graph_layers, get_basal_produ
 from src.zoo_functions import is_debugger_active, plot_three_genes, open_datasets_json, dataset_namedtuple
 from src.all_about_visualization import plot_heatmap_all_expressions
 
+
 class Sim:
     hill_coefficient = 2
 
@@ -26,6 +27,7 @@ class Sim:
                  interactions_filepath: str, regulators_filepath: str,
                  simulation_num_steps: int, num_samples_from_trajectory: int = None,
                  noise_amplitude: float = 1.,
+                 seed = 0,
                  **kwargs):
 
         self.num_genes = num_genes
@@ -44,7 +46,7 @@ class Sim:
         self.dt = 0.01
 
         self.layers = None
-        self.seed = 0  # random seed for jax random generator
+        self.seed = seed  # random seed for jax random generator
 
     def next_seed(self):
         """Quick seed change for next rollout"""
@@ -178,7 +180,11 @@ class Sim:
             decay = jnp.multiply(0.8, curr_concentration)
             amplitude_p = q * jnp.power(production_rates, 0.5)
             amplitude_d = q * jnp.power(decay, 0.5)
-            noise = jnp.multiply(amplitude_p, dw_production) + jnp.multiply(amplitude_d, dw_decay)
+            # noise = jnp.multiply(amplitude_p, dw_production) + jnp.multiply(amplitude_d, dw_decay)
+            decay_noise = jnp.multiply(amplitude_d, dw_decay) # this one works
+            # TODO fix dw_production
+            noise_2 = dw_production #  jnp.multiply(amplitude_p, dw_production)
+            noise = decay_noise + noise_2
             next_gene_conc = curr_concentration + (self.dt * jnp.subtract(production_rates, decay)) + jnp.power(self.dt,
                                                                                                                 0.5) * noise  # shape=( # #genes,#types)
             next_gene_conc = jnp.clip(next_gene_conc, a_min=0)
@@ -202,6 +208,7 @@ class Sim:
             amplitude_p = q * jnp.power(production_rates, 0.5)
             amplitude_d = q * jnp.power(decay, 0.5)
             noise = jnp.multiply(amplitude_p, dw_p) + jnp.multiply(amplitude_d, dw_d)
+            noise = 0
             next_x = curr_x + (self.dt * jnp.subtract(production_rates, decay)) + jnp.power(self.dt,
                                                                                             0.5) * noise  # # shape=(#genes,#types)
             next_x = jnp.clip(next_x, a_min=0)
@@ -217,6 +224,7 @@ class Params:
         self.regulators_dict = regulators_dict
         self.adjacency = adjacency
         self.repressive_dict = repressive_dict
+
 
 
 def calculate_production_rate(params: Params, gene, half_response, mean_expression):
@@ -249,7 +257,7 @@ def hill_function(regulators_concentration, half_response, is_repressive, absolu
 if __name__ == '__main__':
     start = time()
     simulation_num_steps = 10000
-    which_dataset_name = "DS4"
+    which_dataset_name = "dummy"
     dataset_dict = open_datasets_json(return_specific_dataset=which_dataset_name)
     dataset = dataset_namedtuple(*dataset_dict.values())
     sim = Sim(num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types,
@@ -272,6 +280,10 @@ if __name__ == '__main__':
         x = sim.run_one_rollout(actions)
 
     expr_clean = jnp.stack(tuple([x[gene] for gene in range(sim.num_genes)])).swapaxes(0, 1)
+
+
+    print(expr_clean)
+
 
     plot_heatmap_all_expressions(expr_clean.mean(0), layers[0], show=True, close=False)
     plt.close()

@@ -1,4 +1,22 @@
-{
+{ "dummy": {
+    "interactions": "data/Interaction_cID_4.txt",
+    "regulators": "data/Regs_cID_4.txt",
+    "params_outliers_genes_noise": [
+      0.01,
+      0.8,
+      1
+    ],
+    "params_library_size_noise": [
+      4.8,
+      0.3
+    ],
+    "params_dropout_noise": [
+      20,
+      82
+    ],
+    "tot_genes": 100,
+    "tot_cell_types": 9
+  },
   "DS1": {
     "interactions": "SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Interaction_cID_4.txt",
     "regulators": "SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Regs_cID_4.txt",
