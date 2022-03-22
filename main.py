@@ -30,7 +30,7 @@ def cross_entropy(logprobs, targets):
     v1: jnp.mean(jnp.sum(output_classifier * jnp.eye(3)[targets], axis=1))
 
     @logprobs: expert output or could be the softmax output
-    @targets: the target class, can be int or the one-hot encoding is choose to use softmax
+    @targets: the target class, can be int or the one-hot encoding is chosen to use softmax
     """
     cs = jnp.mean(logprobs[:, targets])
     return cs
@@ -40,7 +40,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
             writer=None, add_technical_noise_function=None):
     start = time.time()
 
-    @jax.jit
+    # @jax.jit
     def loss_fn(actions):
         expr = env.run_one_rollout(actions)
         expr = jnp.stack(tuple([expr[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
@@ -57,7 +57,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
         output_classifier = expert(expr)
         loss = cross_entropy(output_classifier, 2)
 
-        return -loss, expr
+        return loss, expr
 
     opt_init, opt_update, get_params = optimizers.adam(step_size=0.001)
     opt_state = opt_init(jnp.ones(shape=(num_master_genes, num_cell_types)))
@@ -129,7 +129,7 @@ if __name__ == "__main__":
     sim = Sim(
         num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types,
         simulation_num_steps=params['NUM_SIM_CELLS'],
-        interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.8
+        interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.9
     )
     adjacency, graph, layers = sim.build()
 
