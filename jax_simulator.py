@@ -1,11 +1,4 @@
 import functools
-
-import seaborn as sns
-from bioinfokit import analys, visuz
-from src.zoo_functions import create_plot_graph
-import torch
-# from src.models.expert.classfier_cell_state import CellStateClassifier, torch_to_jax
-from src.techinical_noise import AddTechnicalNoise
 from copy import deepcopy
 from time import time
 
@@ -13,11 +6,12 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.stats import ttest_ind
 
-from src.load_utils import load_grn_jax, topo_sort_graph_layers, get_basal_production_rate
-from src.zoo_functions import is_debugger_active, plot_three_genes, open_datasets_json, dataset_namedtuple
 from src.all_about_visualization import plot_heatmap_all_expressions
+from src.load_utils import load_grn_jax, topo_sort_graph_layers, get_basal_production_rate
+from src.techinical_noise import AddTechnicalNoise
+from src.zoo_functions import create_plot_graph
+from src.zoo_functions import is_debugger_active, plot_three_genes, open_datasets_json, dataset_namedtuple
 
 np.seterr(invalid="raise")
 
@@ -193,7 +187,8 @@ class Sim:
             next_gene_conc = curr_concentration + (self.dt * jnp.subtract(production_rates, decay)) + jnp.power(
                 self.dt, 0.5) * noise
 
-            next_gene_conc = jax.nn.relu(next_gene_conc)
+            # next_gene_conc = jax.nn.relu(next_gene_conc)
+            next_gene_conc = jax.nn.softplus(next_gene_conc)
             return next_gene_conc, next_gene_conc
 
         noises = (dw_p, dw_d)
@@ -215,10 +210,10 @@ class Sim:
             amplitude_p = q * jnp.power(production_rates, 0.5)
             amplitude_d = q * jnp.power(decay, 0.5)
             noise = jnp.multiply(amplitude_p, dw_p) + jnp.multiply(amplitude_d, dw_d)
-            noise = 0
             next_x = curr_x + (self.dt * jnp.subtract(production_rates, decay)) + jnp.power(self.dt,
                                                                                             0.5) * noise  # # shape=(#genes,#types)
-            next_x = jnp.clip(next_x, a_min=0)
+            # next_x = jax.nn.relu(next_x)
+            next_x = jax.nn.softplus(next_x)
             return next_x, next_x
 
         all_state = dw_d, dw_p
@@ -258,44 +253,3 @@ def hill_function(regulators_concentration, half_response, is_repressive, absolu
     rate2 = jnp.where(is_repressive, 1 - rate, rate)
     k_rate = jnp.einsum("r,rt->t", absolute_k, rate2)
     return k_rate
-
-
-if __name__ == '__main__':
-    start = time()
-    simulation_num_steps = 1000
-    which_dataset_name = "dummy"
-    dataset_dict = open_datasets_json(return_specific_dataset=which_dataset_name)
-    dataset = dataset_namedtuple(*dataset_dict.values())
-    sim = Sim(num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types,
-              interactions_filepath=dataset.interactions,
-              regulators_filepath=dataset.regulators,
-              simulation_num_steps=simulation_num_steps,
-              noise_amplitude=0.8,
-              )
-    adjacency, graph, layers = sim.build()
-
-    create_plot_graph(graph, verbose=False, dataset_name=f"{which_dataset_name}.png")
-
-    if is_debugger_active():
-        with jax.disable_jit():
-            simulation_num_steps = 10
-            sim.simulation_num_steps = simulation_num_steps
-            x = sim.run_one_rollout()
-    else:
-        x = sim.run_one_rollout(actions=None)
-
-    expr_clean = jnp.stack(tuple([x[gene] for gene in range(sim.num_genes)])).swapaxes(0, 1)
-
-    plot_heatmap_all_expressions(expr_clean.mean(0), layers[0], show=True, close=False)
-    plt.close()
-
-    print(expr_clean.shape)
-    print(f"time: {time() - start}.3f")
-    plot_three_genes(expr_clean.T[0, 44], expr_clean.T[0, 1], expr_clean.T[0, 99], hlines=None, title="expression")
-
-    expr = AddTechnicalNoise(dataset.tot_genes, dataset.tot_cell_types, simulation_num_steps,
-                             dataset.params_outliers_genes_noise,
-                             dataset.params_library_size_noise,
-                             dataset.params_dropout_noise).get_noisy_technical_concentration(expr_clean.T)
-    print(f"shape noisy data: {expr.shape}")
-    plot_heatmap_all_expressions(expr.reshape(9, 100, 1000).mean(2).T, layers[0], show=True)
