@@ -40,7 +40,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
             writer=None, add_technical_noise_function=None):
     start = time.time()
 
-    # @jax.jit
+    @jax.jit
     def loss_fn(actions):
         expr = env.run_one_rollout(actions)
         expr = jnp.stack(tuple([expr[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)

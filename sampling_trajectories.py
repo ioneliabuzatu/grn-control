@@ -24,9 +24,8 @@ def sample():
               noise_amplitude=0.8,
               )
     adjacency, graph, layers = sim.build()
-    create_plot_graph(graph, verbose=False, dataset_name=f"{which_dataset_name}.png")
 
-    num_chains_per_initial_state = 1
+    num_chains_per_initial_state = 3
 
     # in debugger mode, jax is much slower than in runtime mode, so set the number of simulation num steps very low
     # like 10.
