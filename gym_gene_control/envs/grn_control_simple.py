@@ -27,13 +27,14 @@ class GRNControlSimpleEnv(gym.Env):
             noise_amplitude=self.noise_amplitude,
         )
         self.sim.build()
-        self.action_space = gym.spaces.Box(low=np.zeros(self.sim.num_genes), high=np.ones(self.sim.num_genes))
+        action_size = len(self.sim.layers[0])
+        self.action_space = gym.spaces.Box(low=np.zeros(action_size), high=np.ones(action_size))
         self.observation_space = gym.spaces.Box(low=np.zeros(self.sim.num_genes), high=np.ones(self.sim.num_genes))
         self.initial_state = None
 
     def step(self, action):
         x_T = self.sim.run_one_rollout(action)
-        x_T = self.to_array(x_T)
+        x_T = self.dict_to_array(x_T)
 
         desired_concentration = self.initial_state[:, :, self.target_gene_type].mean(axis=0)  # TODO: worry about outliers, zeros and negatives
         dist = jnp.linalg.norm(np.tile(desired_concentration.reshape(1, -1, 1), (1, 1, x_T.shape[2])) - x_T)
@@ -44,14 +45,14 @@ class GRNControlSimpleEnv(gym.Env):
         # TODO: return bad reward if there is no convergence
         return x_T, reward, done, {}
 
-    def to_array(self, x):
+    def dict_to_array(self, x):
         expr_clean = jnp.stack(tuple([x[gene] for gene in range(self.sim.num_genes)])).swapaxes(0, 1)
         return expr_clean
 
     def reset(self):
         if self.initial_state is None:
-            action = jnp.zeros(self.sim.num_genes)
-            self.initial_state = self.to_array(self.sim.run_one_rollout(action))
+            action = np.ones(self.action_space.shape)
+            self.initial_state = self.dict_to_array(self.sim.run_one_rollout(action))
         return self.initial_state
 
     def render(self, mode='human'):
