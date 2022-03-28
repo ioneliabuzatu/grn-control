@@ -1,4 +1,5 @@
-{ "dummy": {
+{
+  "Dummy": {
     "interactions": "data/Interaction_cID_4.txt",
     "regulators": "data/Regs_cID_4.txt",
     "params_outliers_genes_noise": [
