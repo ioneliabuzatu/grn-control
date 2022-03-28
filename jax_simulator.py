@@ -1,8 +1,4 @@
 import functools
-from src.zoo_functions import create_plot_graph
-import torch
-# from src.models.expert.classfier_cell_state import CellStateClassifier, torch_to_jax
-from src.techinical_noise import AddTechnicalNoise
 from copy import deepcopy
 from time import time
 
@@ -10,10 +6,14 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.stats import ttest_ind
 
+from src.all_about_visualization import plot_heatmap_all_expressions
 from src.load_utils import load_grn_jax, topo_sort_graph_layers, get_basal_production_rate
+from src.techinical_noise import AddTechnicalNoise
+from src.zoo_functions import create_plot_graph
 from src.zoo_functions import is_debugger_active, plot_three_genes, open_datasets_json, dataset_namedtuple
+
+np.seterr(invalid="raise")
 
 
 class Sim:
@@ -23,6 +23,7 @@ class Sim:
                  interactions_filepath: str, regulators_filepath: str,
                  simulation_num_steps: int, num_samples_from_trajectory: int = None,
                  noise_amplitude: float = 1.,
+                 seed=0,
                  **kwargs):
 
         self.num_genes = num_genes
@@ -41,7 +42,7 @@ class Sim:
         self.dt = 0.01
 
         self.layers = None
-        self.seed = 0  # random seed for jax random generator
+        self.seed = seed  # random seed for jax random generator
 
     def next_seed(self):
         """Quick seed change for next rollout"""
@@ -113,7 +114,8 @@ class Sim:
             curr_genes_expression = x_0
             params = Params(self.regulators_dict, self.adjacency, self.repressive_dict)
 
-            production_rates = jnp.array([calculate_production_rate(params, gene, half_response, mean_expression) for gene in layer])
+            production_rates = jnp.array(
+                [calculate_production_rate(params, gene, half_response, mean_expression) for gene in layer])
             trajectories = jax.vmap(self.simulate_targets, in_axes=(1, 0, None, 0))(
                 production_rates, curr_genes_expression, layer, subkeys
             )
@@ -170,19 +172,28 @@ class Sim:
         key, subkey = jax.random.split(key)
         dw_d = jax.random.normal(subkey, shape=(self.simulation_num_steps - 1,))
 
-        def concentration_forward(curr_concentration, state):
-            dw_production, dw_decay = state
-            decay = jnp.multiply(0.8, curr_concentration)
+        def concentration_forward(carry, noises):
+            curr_concentration = carry
+            decayed_production = jnp.multiply(0.8, curr_concentration)
+            dw_production, dw_decay = noises
+
+            amplitude_d = q * jnp.power(decayed_production, 0.5)
             amplitude_p = q * jnp.power(production_rates, 0.5)
-            amplitude_d = q * jnp.power(decay, 0.5)
+
+            decay = jnp.multiply(0.8, curr_concentration)
+
             noise = jnp.multiply(amplitude_p, dw_production) + jnp.multiply(amplitude_d, dw_decay)
-            next_gene_conc = curr_concentration + (self.dt * jnp.subtract(production_rates, decay)) + jnp.power(self.dt,
-                                                                                                                0.5) * noise  # shape=( # #genes,#types)
-            next_gene_conc = jnp.clip(next_gene_conc, a_min=0)
+
+            next_gene_conc = curr_concentration + (self.dt * jnp.subtract(production_rates, decay)) + jnp.power(
+                self.dt, 0.5) * noise
+
+            # next_gene_conc = jax.nn.relu(next_gene_conc)
+            next_gene_conc = jax.nn.softplus(next_gene_conc)
             return next_gene_conc, next_gene_conc
 
-        all_states = dw_p, dw_d
-        gene_trajectory_concentration = jax.lax.scan(concentration_forward, curr_genes_expression, all_states)[1]
+        noises = (dw_p, dw_d)
+        gene_trajectory_concentration = jax.lax.scan(concentration_forward, curr_genes_expression, noises,
+                                                     length=self.simulation_num_steps - 1)[1]
         return gene_trajectory_concentration
 
     @functools.partial(jax.jit, static_argnums=(0,))
@@ -201,7 +212,8 @@ class Sim:
             noise = jnp.multiply(amplitude_p, dw_p) + jnp.multiply(amplitude_d, dw_d)
             next_x = curr_x + (self.dt * jnp.subtract(production_rates, decay)) + jnp.power(self.dt,
                                                                                             0.5) * noise  # # shape=(#genes,#types)
-            next_x = jnp.clip(next_x, a_min=0)
+            # next_x = jax.nn.relu(next_x)
+            next_x = jax.nn.softplus(next_x)
             return next_x, next_x
 
         all_state = dw_d, dw_p
@@ -241,41 +253,3 @@ def hill_function(regulators_concentration, half_response, is_repressive, absolu
     rate2 = jnp.where(is_repressive, 1 - rate, rate)
     k_rate = jnp.einsum("r,rt->t", absolute_k, rate2)
     return k_rate
-
-
-if __name__ == '__main__':
-    start = time()
-    simulation_num_steps = 10000
-    which_dataset_name = "DS4"
-    dataset_dict = open_datasets_json(return_specific_dataset=which_dataset_name)
-    dataset = dataset_namedtuple(*dataset_dict.values())
-    sim = Sim(num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types,
-              interactions_filepath=dataset.interactions,
-              regulators_filepath=dataset.regulators,
-              simulation_num_steps=simulation_num_steps,
-              noise_amplitude=0.8,
-              )
-    adjacency, graph, layers = sim.build()
-
-    create_plot_graph(graph, verbose=False, dataset_name=f"{which_dataset_name}.png")
-
-    if is_debugger_active():
-        with jax.disable_jit():
-            simulation_num_steps = 10
-            sim.simulation_num_steps = simulation_num_steps
-            x = sim.run_one_rollout()
-    else:
-        actions = jnp.array(np.load("data/actions_ds4.npy"))
-        x = sim.run_one_rollout(actions)
-
-    expr_clean = jnp.stack(tuple([x[gene] for gene in range(sim.num_genes)])).swapaxes(0, 1)
-
-    print(expr_clean.shape)
-    print(f"time: {time() - start}.3f")
-    plot_three_genes(expr_clean.T[0, 44], expr_clean.T[0, 1], expr_clean.T[0, 99], hlines=None, title="expression")
-
-    expr = AddTechnicalNoise(dataset.tot_genes, dataset.tot_cell_types, simulation_num_steps,
-                             dataset.params_outliers_genes_noise,
-                             dataset.params_library_size_noise,
-                             dataset.params_dropout_noise).get_noisy_technical_concentration(expr_clean.T)
-    print(f"shape noisy data: {expr.shape}")

@@ -20,6 +20,7 @@ import wandb
 import seaborn as sns
 from jax.example_libraries import optimizers
 from scipy.spatial import distance_matrix
+from src.all_about_visualization import plot_heatmap_all_expressions
 
 
 def cross_entropy(logprobs, targets):
@@ -29,7 +30,7 @@ def cross_entropy(logprobs, targets):
     v1: jnp.mean(jnp.sum(output_classifier * jnp.eye(3)[targets], axis=1))
 
     @logprobs: expert output or could be the softmax output
-    @targets: the target class, can be int or the one-hot encoding is choose to use softmax
+    @targets: the target class, can be int or the one-hot encoding is chosen to use softmax
     """
     cs = jnp.mean(logprobs[:, targets])
     return cs
@@ -41,34 +42,36 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 
     @jax.jit
     def loss_fn(actions):
-        expr = env.run_one_rollout(actions)
-        expr = jnp.stack(tuple([expr[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
+        expression = env.run_one_rollout(actions)
+        expression = jnp.stack(tuple([expression[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
 
         if visualise_samples_genes:
-            plot_three_genes(expr.T[0, 44], expr.T[0, 1], expr.T[0, 99], hlines=None, title="expression")
+            plot_three_genes(expression.T[0, 44], expression.T[0, 1], expression.T[0, 99], hlines=None, title="expression")
 
         if add_technical_noise_function is not None:
-            expr = add_technical_noise_function.get_noisy_technical_concentration(expr.T).T
+            concat_expression = add_technical_noise_function.get_noisy_technical_concentration(expression.T).T
         else:
-            expr = jnp.concatenate(expr, axis=1).T
+            concat_expression = jnp.concatenate(expression, axis=1).T
 
-        print(expr.shape)
-        output_classifier = expert(expr)
+        print(concat_expression.shape)
+        output_classifier = expert(concat_expression)
         loss = cross_entropy(output_classifier, 2)
 
-        return -loss, expr
+        return loss, expression
 
-    opt_init, opt_update, get_params = optimizers.adam(step_size=0.001)
+    opt_init, opt_update, get_params = optimizers.adam(step_size=0.005)
     opt_state = opt_init(jnp.ones(shape=(num_master_genes, num_cell_types)))
+
+    check_expressions_for_convergence = []
 
     def update(episode, opt_state_):
         actions = get_params(opt_state_)
-        (loss, expr), grad = jax.value_and_grad(loss_fn, has_aux=True)(actions)
+        (loss, expression), grad = jax.value_and_grad(loss_fn, has_aux=True)(actions)
 
         grad = jnp.clip(grad, -1, 1)
-        print("loss", loss)
-        print(f"grad shape: {grad.shape} \n grad: {grad}")
-        print(f"episode#{episode} took {time.time() - start:.3f} secs.")
+        # print("loss", loss)
+        # print(f"grad shape: {grad.shape} \n grad: {grad}")
+        # print(f"episode#{episode} took {time.time() - start:.3f} secs.")
 
         writer.run.log({"loss": loss}, step=episode)
         writer.run.log({"grads": wandb.Image(sns.heatmap(grad, linewidth=0.5))}, step=episode)
@@ -76,15 +79,15 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
         writer.run.log({"actions": wandb.Image(sns.heatmap(actions, linewidth=0.5))}, step=episode)
         plt.close()
         fig = plt.figure(figsize=(10, 7))
-        plt.plot(jnp.mean(jnp.array(expr), axis=0))
+        plt.plot(jnp.mean(jnp.array(expression), axis=0))
         writer.run.log({"control/mean": wandb.Image(fig)}, step=episode)
         plt.close()
 
-        return opt_update(episode, grad, opt_state_)
+        return opt_update(episode, grad, opt_state_), check_expressions_for_convergence
 
     for episode in range(num_episodes):
         print("Episode#", episode)
-        opt_state = update(episode, opt_state)
+        opt_state = update(episode, opt_state)  # opt_state are the actions
 
     print(f"Took {time.time() - start:.3f} secs.")
 
@@ -94,7 +97,7 @@ if __name__ == "__main__":
     plt_mean = np.mean(ds4_ground_truth_initial_dist, axis=0)
     plt_std = np.std(ds4_ground_truth_initial_dist, axis=0)
 
-    params = {'num_genes': 100, 'NUM_SIM_CELLS': 100}
+    params = {'num_genes': 100, 'NUM_SIM_CELLS': 1000}
     experiment_buddy.register_defaults(params)
     buddy = experiment_buddy.deploy(host="", disabled=False)
     fig = plt.figure(figsize=(10, 7))
@@ -128,9 +131,15 @@ if __name__ == "__main__":
     sim = Sim(
         num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types,
         simulation_num_steps=params['NUM_SIM_CELLS'],
-        interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.5
+        interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.9
     )
-    sim.build()
+    adjacency, graph, layers = sim.build()
+
+    fig = plot_heatmap_all_expressions(
+        ds4_ground_truth_initial_dist.reshape(3, 100, 10000).mean(2).T,
+        layers[0],
+        show=False)
+    buddy.run.log({"heatmap/expression/gd": wandb.Image(fig)}, step=0)
 
     add_technical_noise = AddTechnicalNoiseJax(
         dataset.tot_genes, dataset.tot_cell_types, params['NUM_SIM_CELLS'],
@@ -141,7 +150,8 @@ if __name__ == "__main__":
         with jax.disable_jit():
             control(sim, 100, dataset.tot_cell_types, len(sim.layers[0]), classifier,
                     writer=buddy,
-                    add_technical_noise_function=add_technical_noise)
+                    # add_technical_noise_function=add_technical_noise
+                    )
     else:
         control(sim, 100, dataset.tot_cell_types, len(sim.layers[0]), classifier,
                 writer=buddy,
