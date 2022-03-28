@@ -13,7 +13,7 @@ from jax_simulator import Sim
 
 def sample():
     start = time()
-    simulation_num_steps = 10000
+    simulation_num_steps = 10
     which_dataset_name = "DS1"
     dataset_dict = open_datasets_json(return_specific_dataset=which_dataset_name)
     dataset = dataset_namedtuple(*dataset_dict.values())
@@ -50,8 +50,20 @@ def sample():
 
     print("shape of the four dimensional array:", four_dims_array.shape)
     print(f"time: {time() - start}.3f")
-    plot_three_genes(four_dims_array[0].T[0, 44], four_dims_array[0].T[0, 1], four_dims_array.T[0, 99], hlines=None,
-                     title="expression")
+    plot_three_genes(
+        [four_dims_array.T[0, layers[0][0]], four_dims_array.T[0, layers[1][0]], four_dims_array.T[0, layers[2][0]]],
+        hlines=None,
+        title="expression")
+
+    values = four_dims_array[:, -100:]
+    means = values.mean(0).mean(1).mean(1)
+    last = four_dims_array[:, -1].mean()
+    errors = np.abs(means - last)
+    errors_mean = errors.mean()
+    t = 0.1 * last if last > 1 else 0.2 * last
+    converged = errors_mean < t
+    print(f"{converged} converged")
+    print(f"time: {time() - start}.3f")
 
 
 if __name__ == "__main__":

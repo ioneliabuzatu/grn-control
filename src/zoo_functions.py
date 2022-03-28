@@ -24,22 +24,23 @@ def is_debugger_active() -> bool:
     return gettrace() is not None
 
 
-def plot_three_genes(gene1, gene2, gene3, hlines=None, xmax=1500, title=""):
+def plot_three_genes(genes: list, hlines=None, xmax=1500, title=""):
     """sanity check one gene from each layer"""
-    _, axes = plt.subplots(1, 3, figsize=(10, 5))
-    
-    if isinstance(gene1, jax.interpreters.ad.JVPTracer):
-        gene1 = gene1.primal
-        gene2 = gene2.primal
-        gene3 = gene3.primal
+    assert len(genes) == 3
 
-    axes[0].plot(gene1)
-    axes[1].plot(gene2)
-    axes[2].plot(gene3)
+    _, axes = plt.subplots(1, 3, figsize=(15, 5))
 
-    axes[0].set_title('Gene 44 in layer 0')
-    axes[1].set_title('Gene 1 in layer 1')
-    axes[2].set_title('Gene 99 in layer 2')
+    def return_as_jax_primal(gene):
+        if isinstance(gene, jax.interpreters.ad.JVPTracer):
+            return gene.primal
+        return gene
+
+    for plot, gene in enumerate(genes):
+        axes[plot].plot(return_as_jax_primal(gene))
+
+    axes[0].set_title('A gene from layer 0')
+    axes[1].set_title('A gene from layer 1')
+    axes[2].set_title('A gene from layer 2')
 
     if hlines is not None:
         axes[0].hlines(y=hlines[0], xmin=0, xmax=xmax, linewidth=2, color='r')
