@@ -15,6 +15,7 @@ class GRNControlSimpleEnv(gym.Env):
     def __init__(self):
         self.noise_amplitude = 0.1
         self.num_cells_to_sim = 3
+        self.MAX_ACTIONS_VALUE = 10
 
         dataset_dict = src.zoo_functions.open_datasets_json(return_specific_dataset='Dummy')
         dataset = src.zoo_functions.dataset_namedtuple(*dataset_dict.values())
@@ -28,19 +29,27 @@ class GRNControlSimpleEnv(gym.Env):
         )
         self.sim.build()
         action_size = len(self.sim.layers[0])
-        self.action_space = gym.spaces.Box(low=np.zeros(action_size), high=np.ones(action_size))
-        self.observation_space = gym.spaces.Box(low=np.zeros(self.sim.num_genes), high=np.ones(self.sim.num_genes))
+        self.action_space = gym.spaces.Box(
+            low=np.zeros(action_size) + 1e-6,
+            high=np.ones(action_size) * self.MAX_ACTIONS_VALUE
+        )
+
+        self.observation_space = gym.spaces.Box(
+            low=np.zeros((self.sim.num_genes, self.sim.num_cell_types)),
+            high=np.ones((self.sim.num_genes, self.sim.num_cell_types)) * np.inf,
+        )
         self.initial_state = None
 
     def step(self, action):
-        x_T = self.sim.run_one_rollout(action)
-        x_T = self.dict_to_array(x_T)
+        rollout_states = self.sim.run_one_rollout(action)
+        x = self.dict_to_array(rollout_states)
+        x_T = x[-1, :, :]
 
-        desired_concentration = self.initial_state[:, :, self.target_gene_type].mean(axis=0)  # TODO: worry about outliers, zeros and negatives
-        dist = jnp.linalg.norm(np.tile(desired_concentration.reshape(1, -1, 1), (1, 1, x_T.shape[2])) - x_T)
+        desired_concentration = self.initial_state[:, self.target_gene_type]
+        dist = jnp.linalg.norm(np.tile(desired_concentration.reshape(1, -1, 1), (1, 1, x_T.shape[1])) - x_T)
 
         reward = -dist
-        done = False
+        done = True
 
         # TODO: return bad reward if there is no convergence
         return x_T, reward, done, {}
@@ -52,7 +61,8 @@ class GRNControlSimpleEnv(gym.Env):
     def reset(self):
         if self.initial_state is None:
             action = np.ones(self.action_space.shape)
-            self.initial_state = self.dict_to_array(self.sim.run_one_rollout(action))
+            trajectory = self.dict_to_array(self.sim.run_one_rollout(action))
+            self.initial_state = trajectory[-1, :, :]  # last_time_step of the simulation trajectory
         return self.initial_state
 
     def render(self, mode='human'):
