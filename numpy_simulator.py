@@ -9,6 +9,7 @@ from src.load_utils import load_grn, topo_sort_graph_layers, get_basal_productio
 from src.zoo_functions import plot_three_genes
 from src.techinical_noise import AddTechnicalNoise
 
+
 # np.random.seed(123)
 
 
@@ -66,7 +67,6 @@ class Sim:
             # self._x[:, layer] = self.x[random_sampling_state][:, layer]
             self.mean_expression[list(layer)] = np.mean(self.x[:, list(layer)], axis=0)
 
-
     def calculate_half_response(self, layer):
 
         for gene in layer:
@@ -77,31 +77,42 @@ class Sim:
 
     def init_concentration(self, layer: list, basal_production_rate):
         """ Init concentration genes; Note: calculate_half_response should be run before this method """
-        rates = np.array([self.calculate_production_rate(gene, basal_production_rate) for gene in layer])
+        rates = np.array([self.calculate_production_rate(gene, basal_production_rate, init=True) for gene in layer])
         self.x[0, layer] = rates / self.decay_lambda
 
-
-    def calculate_production_rate(self, gene, basal_production_rate):
+    def calculate_production_rate(self, gene, basal_production_rate, init=False):
         gene_basal_production = basal_production_rate[gene]
         if (gene_basal_production != 0).all():
             return gene_basal_production
 
         regulators = np.where(self.adjacency[:, gene] != 0)
         mean_expression = self.mean_expression[regulators]
+        regulators_concentration = self.x[:, regulators[0]]
         absolute_k = np.abs(self.adjacency[regulators][:, gene])
         is_repressive = np.expand_dims(self.adjacency[regulators][:, gene] < 0, -1).repeat(self.num_cell_types,
                                                                                            axis=-1)
         half_response = self.half_response[gene]
-        hill_function = self.hill_function(mean_expression, half_response, is_repressive)
-        rate = np.einsum("r,rt->t", absolute_k, hill_function)
+        hill_function = self.hill_function(mean_expression, regulators_concentration, half_response, is_repressive,
+                                           init)
+        if init:
+            rate = np.einsum("r,rs->s", absolute_k, hill_function)
+        else:
+            rate = np.einsum("r,trs->ts", absolute_k, hill_function)
+
         return rate
 
-    def hill_function(self, regulators_concentration, half_response, is_repressive):
-        rate = np.power(regulators_concentration, self.hill_coefficient) / (
+    def hill_function(self, mean_expression, regulators_concentration, half_response, is_repressive, init):
+        if init:
+            rate = np.power(mean_expression, self.hill_coefficient) / (
+                np.power(half_response, self.hill_coefficient) + np.power(mean_expression,
+                                                                          self.hill_coefficient))
+            rate[is_repressive] = 1 - rate[is_repressive]
+        else:
+            rate = np.power(regulators_concentration, self.hill_coefficient) / (
                 np.power(half_response, self.hill_coefficient) + np.power(regulators_concentration,
                                                                           self.hill_coefficient))
 
-        rate[is_repressive] = 1 - rate[is_repressive]
+            rate[:, is_repressive] = 1 - rate[:, is_repressive]
         return rate
 
     def euler_maruyama(self, production_rates, curr_genes_expression, layer):
@@ -119,7 +130,7 @@ class Sim:
         amplitude_p = np.einsum("g,gt->gt", self.noise_parameters_genes[layer], np.power(production_rates, 0.5))
         amplitude_d = np.einsum("g,gt->gt", self.noise_parameters_genes[layer], np.power(decays, 0.5))
         noise = np.multiply(amplitude_p, dw_p) + np.multiply(amplitude_d, dw_d)
-        d_genes = 0.01 * np.subtract(production_rates, decays)  + np.power(0.01, 0.5) * noise  # shape=(#genes,#types)
+        d_genes = 0.01 * np.subtract(production_rates, decays) + np.power(0.01, 0.5) * noise  # shape=(#genes,#types)
         return d_genes
 
     def check_for_convergence(self, gene_concentration, concentration_criteria='np_all_close'):
@@ -159,7 +170,7 @@ if __name__ == '__main__':
     print(expr_clean.shape)
     print(f"took {time.time() - start} seconds")
 
-    plot_three_genes(expr_clean.T[0, 44], expr_clean.T[0, 1], expr_clean.T[0, 99], hlines=sim.hlines)
+    plot_three_genes([expr_clean.T[0, 44], expr_clean.T[0, 1], expr_clean.T[0, 99]], hlines=None)
 
     outlier_genes_noises = (0.01, 0.8, 1)
     library_size_noises = (4.8, 0.3)

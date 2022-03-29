@@ -64,7 +64,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 
     check_expressions_for_convergence = []
 
-    def update(episode, opt_state_):
+    def update(episode, opt_state_, check_expressions_for_convergence):
         actions = get_params(opt_state_)
         (loss, expression), grad = jax.value_and_grad(loss_fn, has_aux=True)(actions)
 
@@ -83,11 +83,20 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
         writer.run.log({"control/mean": wandb.Image(fig)}, step=episode)
         plt.close()
 
+        check_expressions_for_convergence.append(expression)
+        if len(check_expressions_for_convergence) == 3:
+            expression = jnp.array(check_expressions_for_convergence)
+            last_x_points = expression[:, -20]
+            mean_x_points = jnp.mean(last_x_points, axis=0)
+            var_mean_x_points = jnp.var(last_x_points - mean_x_points, axis=0)
+            print((var_mean_x_points < 0.1).sum())
+            check_expressions_for_convergence = []
+
         return opt_update(episode, grad, opt_state_), check_expressions_for_convergence
 
     for episode in range(num_episodes):
         print("Episode#", episode)
-        opt_state = update(episode, opt_state)  # opt_state are the actions
+        opt_state, check_expressions_for_convergence = update(episode, opt_state, check_expressions_for_convergence)  # opt_state are the actions
 
     print(f"Took {time.time() - start:.3f} secs.")
 
@@ -97,7 +106,7 @@ if __name__ == "__main__":
     plt_mean = np.mean(ds4_ground_truth_initial_dist, axis=0)
     plt_std = np.std(ds4_ground_truth_initial_dist, axis=0)
 
-    params = {'num_genes': 100, 'NUM_SIM_CELLS': 1000}
+    params = {'num_genes': 100, 'NUM_SIM_CELLS': 200}
     experiment_buddy.register_defaults(params)
     buddy = experiment_buddy.deploy(host="", disabled=False)
     fig = plt.figure(figsize=(10, 7))

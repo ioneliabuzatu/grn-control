@@ -187,8 +187,8 @@ class Sim:
             next_gene_conc = curr_concentration + (self.dt * jnp.subtract(production_rates, decay)) + jnp.power(
                 self.dt, 0.5) * noise
 
-            # next_gene_conc = jax.nn.relu(next_gene_conc)
-            next_gene_conc = jax.nn.softplus(next_gene_conc)
+            next_gene_conc = jax.nn.relu(next_gene_conc)
+            # next_gene_conc = jax.nn.softplus(next_gene_conc)
             return next_gene_conc, next_gene_conc
 
         noises = (dw_p, dw_d)
@@ -212,8 +212,8 @@ class Sim:
             noise = jnp.multiply(amplitude_p, dw_p) + jnp.multiply(amplitude_d, dw_d)
             next_x = curr_x + (self.dt * jnp.subtract(production_rates, decay)) + jnp.power(self.dt,
                                                                                             0.5) * noise  # # shape=(#genes,#types)
-            # next_x = jax.nn.relu(next_x)
-            next_x = jax.nn.softplus(next_x)
+            next_x = jax.nn.relu(next_x)
+            # next_x = jax.nn.softplus(next_x)
             return next_x, next_x
 
         all_state = dw_d, dw_p
@@ -236,7 +236,7 @@ def calculate_production_rate(params: Params, gene, half_response, mean_expressi
     absolute_k = jnp.abs(params.adjacency[regulators][:, gene])
 
     rate = hill_function(
-        mean_expression,
+        mean_expression, # TODO: check this
         half_response,
         is_repressive,
         absolute_k
