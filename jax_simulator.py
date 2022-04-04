@@ -17,7 +17,7 @@ class Sim:
                  interactions_filepath: str, regulators_filepath: str,
                  simulation_num_steps: int, num_samples_from_trajectory: int = None,
                  noise_amplitude: float = 1.,
-                 seed=0,
+                 seed=np.random.randint(1000000),
                  **kwargs):
 
         self.num_genes = num_genes
