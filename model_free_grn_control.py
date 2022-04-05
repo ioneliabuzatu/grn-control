@@ -1,30 +1,36 @@
-from stable_baselines3 import PPO
+import experiment_buddy
+import wandb
 from stable_baselines3.common.env_util import make_vec_env
 from wandb.integration.sb3 import WandbCallback
-import experiment_buddy
-
-
+import time
 import gym_gene_control  # noqa
 
+from src.rl_agents import train_ppo
+from src.rl_agents import train_ddpg
+from src.rl_agents import train_td3
+from src.rl_agents import train_sac
+import os
 
-params = {'todo': 'todo'}
-experiment_buddy.register_defaults(params)
-buddy = experiment_buddy.deploy(host="", disabled=False)
-run = buddy.run
+agent_to_train = [train_ppo, train_ddpg, train_td3, train_sac]
+env_name = "gene_control-v0"  # "gene_control-simple-v0"
 
-# Parallel environments
-env = make_vec_env("gene_control-simple-v0", n_envs=2)
+config = {
+    "policy_type": "MlpPolicy",
+    "total_time_steps": 25000,
+    "env_name": env_name,
+}
 
-model = PPO("MlpPolicy", env, verbose=2, device="cpu", n_steps=1)
-model.learn(total_timesteps=50, callback=WandbCallback())
-model.save("gene_control_simple_ppo")
+experiment_buddy.register_defaults(config)
 
-del model  # remove to demonstrate saving and loading
+env = make_vec_env(env_name, n_envs=2)  # Parallel environments
 
-model = PPO.load("gene_control_simple_ppo")
+for agent in agent_to_train:
+    buddy = experiment_buddy.deploy(
+        host="", disabled=False, wandb_kwargs={'sync_tensorboard': True, 'monitor_gym': True, 'save_code': True},
+        experiment_id=agent.__name__
+    )
+    run = buddy.run
 
-obs = env.reset()
-while True:
-    action, _states = model.predict(obs)
-    obs, rewards, dones, info = env.step(action)
-    print("reward", rewards, "action", action.round(3))
+    agent(run)
+
+    print("Done training", agent.__name__)
