@@ -17,7 +17,9 @@ class GRNControlSimpleEnv(gym.Env):
         self.num_cells_to_sim = 10
         self.MAX_ACTIONS_VALUE = 10
 
-        dataset_dict = src.zoo_functions.open_datasets_json(return_specific_dataset='Dummy')
+        dataset_dict = src.zoo_functions.open_datasets_json(
+            return_specific_dataset='Dummy'
+        )
         dataset = src.zoo_functions.dataset_namedtuple(*dataset_dict.values())
         self.sim = jax_simulator.Sim(
             num_genes=dataset.tot_genes,
@@ -28,12 +30,12 @@ class GRNControlSimpleEnv(gym.Env):
             noise_amplitude=self.noise_amplitude,
         )
         self.sim.build()
+
         action_size = len(self.sim.layers[0])
         self.action_space = gym.spaces.Box(
             low=np.zeros(action_size) + 1e-6,
             high=np.ones(action_size) * self.MAX_ACTIONS_VALUE
         )
-
         self.observation_space = gym.spaces.Box(
             low=np.zeros((self.sim.num_genes, self.sim.num_cell_types)),
             high=np.ones((self.sim.num_genes, self.sim.num_cell_types)) * np.inf,
