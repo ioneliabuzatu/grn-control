@@ -21,11 +21,11 @@ __all__ = [
 ]
 
 
-def train_a2c(run, how_many_time_steps_for_prediction: int = 10):
+def train_a2c(run, how_many_time_steps_for_prediction: int = 10, learn_time_steps: int = 100):
     env = make_vec_env("gene_control-v0", n_envs=4)
 
     model = A2C("MlpPolicy", env, verbose=1)
-    model.learn(total_timesteps=25000)
+    model.learn(total_timesteps=learn_time_steps)
     model.save("a2c_cartpole")
 
     del model  # remove to demonstrate saving and loading
@@ -39,15 +39,21 @@ def train_a2c(run, how_many_time_steps_for_prediction: int = 10):
         # env.render()
 
 
-def train_ddpg(run, how_many_time_steps_for_prediction: int=10):
+def train_ddpg(run, how_many_time_steps_for_prediction: int = 10, learn_time_steps: int = 100):
     env = gym.make("gene_control-v0")
 
-    # The noise objects for DDPG
     n_actions = env.action_space.shape[-1]
     action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
 
-    model = DDPG("MlpPolicy", env, action_noise=action_noise, verbose=1)
-    model.learn(total_timesteps=10000, log_interval=10)
+    model = DDPG("MlpPolicy", env, action_noise=action_noise, verbose=1, tensorboard_log=f"runs/{run.id}")
+    model.learn(
+        total_timesteps=learn_time_steps,
+        callback=WandbCallback(
+            gradient_save_freq=100,
+            model_save_path=f"models/{run.id}",
+            verbose=2,
+        )
+    )
     model.save("ddpg_pendulum")
     env = model.get_env()
 
@@ -59,14 +65,16 @@ def train_ddpg(run, how_many_time_steps_for_prediction: int=10):
     for step in range(how_many_time_steps_for_prediction):
         action, _states = model.predict(obs)
         obs, rewards, dones, info = env.step(action)
+        run.log({"prediction reward": rewards[0]})
+        print("reward", rewards, "action", action.round(3))
 
 
-def train_ppo(run, how_many_time_steps_for_prediction: int=10):
+def train_ppo(run, how_many_time_steps_for_prediction: int = 10, learn_time_steps: int = 100):
     env = make_vec_env("gene_control-v0", n_envs=2)  # Parallel environments
 
     model = PPO("MlpPolicy", env, verbose=2, device="cpu", n_steps=1, tensorboard_log=f"runs/{run.id}")
     model.learn(
-        total_timesteps=5,
+        total_timesteps=learn_time_steps,
         callback=WandbCallback(
             gradient_save_freq=100,
             model_save_path=f"models/{run.id}",
@@ -87,11 +95,18 @@ def train_ppo(run, how_many_time_steps_for_prediction: int=10):
         print("reward", rewards, "action", action.round(3))
 
 
-def train_sac(run, how_many_time_steps_for_prediction: int=10):
+def train_sac(run, how_many_time_steps_for_prediction: int = 10, learn_time_steps: int = 100):
     env = gym.make("gene_control-v0")
 
-    model = SAC("MlpPolicy", env, verbose=1)
-    model.learn(total_timesteps=10000, log_interval=4)
+    model = SAC("MlpPolicy", env, verbose=1, tensorboard_log=f"runs/{run.id}")
+    model.learn(
+        total_timesteps=learn_time_steps,
+        callback=WandbCallback(
+            gradient_save_freq=100,
+            model_save_path=f"models/{run.id}",
+            verbose=2,
+        )
+    )
     model.save("sac_pendulum")
 
     del model  # remove to demonstrate saving and loading
@@ -105,16 +120,26 @@ def train_sac(run, how_many_time_steps_for_prediction: int=10):
         if done:
             obs = env.reset()
 
+        print("reward", reward, "action", action.round(3))
+        run.log({"prediction reward": reward})
 
-def train_td3(run, how_many_time_steps_for_prediction: int=10):
+
+def train_td3(run, how_many_time_steps_for_prediction: int = 10, learn_time_steps: int = 100):
     env = gym.make("gene_control-v0")
 
-    # The noise objects for TD3
     n_actions = env.action_space.shape[-1]
     action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
 
-    model = TD3("MlpPolicy", env, action_noise=action_noise, verbose=1)
-    model.learn(total_timesteps=10000, log_interval=10)
+    model = TD3("MlpPolicy", env, action_noise=action_noise, verbose=1, tensorboard_log=f"runs/{run.id}")
+    model.learn(
+        total_timesteps=learn_time_steps,
+        log_interval=10,
+        callback=WandbCallback(
+            gradient_save_freq=100,
+            model_save_path=f"models/{run.id}",
+            verbose=2,
+        )
+    )
     model.save("td3_pendulum")
     env = model.get_env()
 
@@ -126,3 +151,6 @@ def train_td3(run, how_many_time_steps_for_prediction: int=10):
     for step in range(how_many_time_steps_for_prediction):
         action, _states = model.predict(obs)
         obs, rewards, dones, info = env.step(action)
+
+        run.log({"prediction reward": rewards[0]})
+        print("reward", rewards, "action", action.round(3))

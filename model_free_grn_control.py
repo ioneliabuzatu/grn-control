@@ -1,3 +1,4 @@
+import sys
 import experiment_buddy
 import wandb
 from stable_baselines3.common.env_util import make_vec_env
@@ -11,7 +12,7 @@ from src.rl_agents import train_td3
 from src.rl_agents import train_sac
 import os
 
-agent_to_train = [train_ppo, train_ddpg, train_td3, train_sac]
+agent_to_train = [train_sac, train_ppo, train_ddpg, train_td3]
 env_name = "gene_control-v0"  # "gene_control-simple-v0"
 
 config = {
@@ -26,7 +27,10 @@ env = make_vec_env(env_name, n_envs=2)  # Parallel environments
 
 for agent in agent_to_train:
     buddy = experiment_buddy.deploy(
-        host="", disabled=False, wandb_kwargs={'sync_tensorboard': True, 'monitor_gym': True, 'save_code': True},
+        host="", disabled=False,
+        wandb_kwargs={
+            'sync_tensorboard': True, 'monitor_gym': True, 'save_code': True, 'entity': 'control-grn', 'project': 'RL'
+        },
         experiment_id=agent.__name__
     )
     run = buddy.run
