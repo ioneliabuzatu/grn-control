@@ -22,7 +22,7 @@ class GRNControlEnv(gym.Env):
         self.MAX_ACTIONS_VALUE = 10
 
         params = {'num_genes': 100, 'NUM_SIM_CELLS': 100}
-        dataset_dict = src.zoo_functions.open_datasets_json(return_specific_dataset='DS4')
+        dataset_dict = src.zoo_functions.open_datasets_json(return_specific_key='DS4')
         dataset = src.zoo_functions.dataset_namedtuple(*dataset_dict.values())
 
         expert_checkpoint_filepath = "src/models/expert/checkpoints/classifier_ds4.pth"
