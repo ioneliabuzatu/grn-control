@@ -1,0 +1,119 @@
+{
+  "train_sac": {
+    "env_name": "gene_control-v0",
+    "n_envs": 1,
+    "model_load_kwargs": {
+      "gamma": 0,
+      "policy": "MlpPolicy",
+      "verbose": 5,
+      "device": "cuda"
+    },
+    "model_learn_kwargs": {
+      "total_timesteps": 100000
+    },
+    "model_learn_wandb_callback_kwargs": {
+      "gradient_save_freq": 10,
+      "verbose": 5
+    },
+    "model_save_kwargs": {
+      "path": "models/rl/sac"
+    },
+    "model_predict_kwargs": {
+      "time_steps": 10
+    }
+  },
+  "train_ppo": {
+    "env_name": "gene_control-v0",
+    "n_envs": 2,
+    "model_load_kwargs": {
+      "policy": "MlpPolicy",
+      "verbose": 5,
+      "device": "cuda",
+      "n_steps": 1,
+      "gamma": 0
+    },
+    "model_learn_kwargs": {
+      "total_timesteps": 100000
+    },
+    "model_learn_wandb_callback_kwargs": {
+      "gradient_save_freq": 10,
+      "verbose": 5
+    },
+    "model_save_kwargs": {
+      "path": "models/rl/ppo"
+    },
+    "model_predict_kwargs": {
+      "time_steps": 10
+    }
+  },
+  "train_ddpg": {
+    "env_name": "gene_control-v0",
+    "n_envs": 1,
+    "model_load_kwargs": {
+      "gamma": 0,
+      "policy": "MlpPolicy",
+      "verbose": 5,
+      "device": "cuda"
+    },
+    "model_learn_kwargs": {
+      "total_timesteps": 100000
+    },
+    "model_learn_wandb_callback_kwargs": {
+      "gradient_save_freq": 10,
+      "verbose": 5
+    },
+    "model_save_kwargs": {
+      "path": "models/rl/ddpg"
+    },
+    "model_predict_kwargs": {
+      "time_steps": 10
+    }
+  },
+  "train_td3": {
+    "env_name": "gene_control-v0",
+    "n_envs": 1,
+    "model_load_kwargs": {
+      "gamma": 0,
+      "policy": "MlpPolicy",
+      "verbose": 5,
+      "device": "cuda"
+    },
+    "model_learn_kwargs": {
+      "total_timesteps": 100000
+    },
+    "model_learn_wandb_callback_kwargs": {
+      "gradient_save_freq": 10,
+      "verbose": 5
+    },
+    "model_save_kwargs": {
+      "path": "models/rl/td3"
+    },
+    "model_predict_kwargs": {
+      "time_steps": 10
+    }
+  },
+  "train_a2c": {
+    "env_name": "gene_control-v0",
+    "n_envs": 1,
+    "model_load_kwargs": {
+      "gamma": 0,
+      "policy": "MlpPolicy",
+      "verbose": 5,
+      "device": "cuda",
+      "n_steps": 1
+    },
+    "model_learn_kwargs": {
+      "total_timesteps": 100000
+    },
+    "model_learn_wandb_callback_kwargs": {
+      "gradient_save_freq": 10,
+      "verbose": 5
+    },
+    "model_save_kwargs": {
+      "path": "models/rl/a2c"
+    },
+    "model_predict_kwargs": {
+      "time_steps": 10
+    }
+  }
+}
