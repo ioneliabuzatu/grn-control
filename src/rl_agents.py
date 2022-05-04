@@ -1,6 +1,8 @@
 """RL agents taken from: https://stable-baselines3.readthedocs.io/en/master/index.html"""
 import gym
 import numpy as np
+import stable_baselines3.common.callbacks
+
 import gym_gene_control  # noqa
 import jax.numpy as jnp
 
@@ -40,8 +42,8 @@ def train_a2c(run, kwargs):
     env = make_vec_env(kwargs['env_name'], n_envs=kwargs['n_envs'])
     model = A2C(env=env, tensorboard_log=f"runs/{run.id}", **kwargs['model_load_kwargs'])
     model.learn(
+        callback=prepare_callbacks(kwargs, run),
         **kwargs['model_learn_kwargs'],
-        callback=WandbCallback(**kwargs['model_learn_wandb_callback_kwargs'], model_save_path=f"models/wandb/{run.id}")
     )
     model.save(**kwargs['model_save_kwargs'])
     predict(env, model, run, **kwargs['model_predict_kwargs'])
@@ -53,8 +55,8 @@ def train_ddpg(run, kwargs):
     action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
     model = DDPG(env=env, action_noise=action_noise, tensorboard_log=f"runs/{run.id}", **kwargs['model_load_kwargs'])
     model.learn(
+        callback=prepare_callbacks(kwargs, run),
         **kwargs['model_learn_kwargs'],
-        callback=WandbCallback(**kwargs['model_learn_wandb_callback_kwargs'], model_save_path=f"models/wandb/{run.id}")
     )
     model.save(**kwargs['model_save_kwargs'])
     env = model.get_env()
@@ -63,10 +65,10 @@ def train_ddpg(run, kwargs):
 
 def train_ppo(run, kwargs):
     env = make_vec_env(kwargs['env_name'], n_envs=kwargs['n_envs'])
-    model = PPO(env=env, **kwargs['model_load_kwargs'],  tensorboard_log=f"runs/{run.id}")
+    model = PPO(env=env, **kwargs['model_load_kwargs'], tensorboard_log=f"runs/{run.id}")
     model.learn(
+        callback=prepare_callbacks(kwargs, run),
         **kwargs['model_learn_kwargs'],
-        callback=WandbCallback(**kwargs['model_learn_wandb_callback_kwargs'], model_save_path=f"models/wandb/{run.id}")
     )
     model.save(**kwargs['model_save_kwargs'])
     predict(env, model, run, **kwargs['model_predict_kwargs'])
@@ -75,12 +77,21 @@ def train_ppo(run, kwargs):
 def train_sac(run, kwargs):
     env = gym.make(kwargs['env_name'])
     model = SAC(env=env, tensorboard_log=f"runs/{run.id}", **kwargs['model_load_kwargs'])
+
     model.learn(
+        callback=prepare_callbacks(kwargs, run),
         **kwargs['model_learn_kwargs'],
-        callback=WandbCallback(**kwargs['model_learn_wandb_callback_kwargs'], model_save_path=f"models/wandb/{run.id}")
     )
     model.save(**kwargs['model_save_kwargs'])
     predict(env, model, run, **kwargs['model_predict_kwargs'])
+
+
+def prepare_callbacks(kwargs, run):
+    callbacks = [WandbCallback(**kwargs['model_learn_wandb_callback_kwargs'], model_save_path=f"models/wandb/{run.id}")]
+    if 'callback' in kwargs['model_learn_kwargs']:
+        callbacks.append(kwargs['model_learn_kwargs'].pop('callback'))
+    a = stable_baselines3.common.callbacks.CallbackList(callbacks)
+    return a
 
 
 def train_td3(run, kwargs):
@@ -89,8 +100,8 @@ def train_td3(run, kwargs):
     action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
     model = TD3(env=env, action_noise=action_noise, tensorboard_log=f"runs/{run.id}", **kwargs['model_load_kwargs'])
     model.learn(
+        callback=prepare_callbacks(kwargs, run),  # Be careful, order matters, prepare_callbacks removes the callback from kwargs
         **kwargs['model_learn_kwargs'],
-        callback=WandbCallback(**kwargs['model_learn_wandb_callback_kwargs'], model_save_path=f"models/wandb/{run.id}")
     )
     model.save(**kwargs['model_save_kwargs'])
     env = model.get_env()
