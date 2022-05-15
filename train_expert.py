@@ -1,29 +1,38 @@
 import logging
 import os
 
+import experiment_buddy
 import numpy as np
 import torch
 from torch import nn
-import experiment_buddy
 from torch import optim
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 # import config
 from src.models.expert.classfier_cell_state import CellStateClassifier
-from src.models.expert.classfier_cell_state import TranscriptomicsDataset, RandomDataset
+from src.models.expert.classfier_cell_state import RandomDataset
 from src.models.expert.classfier_cell_state import evaluate
 from src.models.expert.classfier_cell_state import get_accuracy
 from src.models.expert.classfier_cell_state import train_val_dataset
 from src.models.expert.classfier_cell_state import update
+import wandb
 
 
 class config():
-    checkpoint_folder = "src/models/expert/checkpoints/"
-    data = "data/ds4_10k_each_type.npy"
+    import getpass
+    whoami = getpass.getuser()
+    if whoami == 'ionelia':
+        checkpoint_folder = "src/models/expert/checkpoints/"
+        data = "data/ds4_10k_each_type.npy"
+    elif whoami == 'ionelia.buzatu':
+        from pathlib import Path
+        home = str(Path.home())
+        checkpoint_folder = home
+        data = "data/ds4_10k_each_type.npy"
+
     tensorboard = True
-    num_genes = 7000
+    num_genes = 15000
     num_cell_types = 3
     lr = 1e-3
     epochs = 500
@@ -31,12 +40,14 @@ class config():
     samples_each_type = 10000
 
 
+wandb.init(project="policy-gradient", entity="control-grn")
 config = config()
 experiment_buddy.register_defaults({'dataset': 'ds4', **config.__dict__})
-writer = experiment_buddy.deploy(host='mila', disabled=True)
+writer = experiment_buddy.deploy(host='mila', wandb_run_name="test")
 
 
 def train(filepath_training_data, epochs=200):
+    os.system("nvidia-smi")
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"Run on {device}")
 
@@ -73,9 +84,7 @@ def train(filepath_training_data, epochs=200):
         if mean_accuracy > val_accuracy:
             val_accuracy = mean_accuracy
             logging.info(f"Saving new model...new accuracy (val): {val_accuracy}")
-            torch.save(network.state_dict(), os.path.join(
-                config.checkpoint_folder, "delete_me.pth")
-                       )
+            torch.save(network.state_dict(), os.path.join(config.checkpoint_folder, "delete_me.pth"))
 
 
 if __name__ == "__main__":
