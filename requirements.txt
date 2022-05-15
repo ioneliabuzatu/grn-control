@@ -1,9 +1,8 @@
 networkx~=2.6.3
 gym~=0.21.0
 stable-baselines3
-
+git+https://github.com/ministry-of-silly-code/experiment_buddy
 numpy~=1.21.5
-torch~=1.10.2+cu113
 sklearn~=0.0
 scikit-learn~=1.0.2
 jax~=0.3.1

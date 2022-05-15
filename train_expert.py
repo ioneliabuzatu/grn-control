@@ -1,18 +1,17 @@
 import logging
 import os
 
+import experiment_buddy
 import numpy as np
 import torch
 from torch import nn
-import experiment_buddy
 from torch import optim
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 # import config
 from src.models.expert.classfier_cell_state import CellStateClassifier
-from src.models.expert.classfier_cell_state import TranscriptomicsDataset, RandomDataset
+from src.models.expert.classfier_cell_state import RandomDataset
 from src.models.expert.classfier_cell_state import evaluate
 from src.models.expert.classfier_cell_state import get_accuracy
 from src.models.expert.classfier_cell_state import train_val_dataset
@@ -33,7 +32,7 @@ class config():
 
 config = config()
 experiment_buddy.register_defaults({'dataset': 'ds4', **config.__dict__})
-writer = experiment_buddy.deploy(host='mila', disabled=True)
+writer = experiment_buddy.deploy(host='mila')
 
 
 def train(filepath_training_data, epochs=200):
@@ -73,9 +72,7 @@ def train(filepath_training_data, epochs=200):
         if mean_accuracy > val_accuracy:
             val_accuracy = mean_accuracy
             logging.info(f"Saving new model...new accuracy (val): {val_accuracy}")
-            torch.save(network.state_dict(), os.path.join(
-                config.checkpoint_folder, "delete_me.pth")
-                       )
+            torch.save(network.state_dict(), os.path.join(config.checkpoint_folder, "delete_me.pth"))
 
 
 if __name__ == "__main__":
