@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 # import config
 from src.models.expert.classfier_cell_state import CellStateClassifier
-from src.models.expert.classfier_cell_state import TranscriptomicsDataset
+from src.models.expert.classfier_cell_state import TranscriptomicsDataset, RandomDataset
 from src.models.expert.classfier_cell_state import evaluate
 from src.models.expert.classfier_cell_state import get_accuracy
 from src.models.expert.classfier_cell_state import train_val_dataset
@@ -23,7 +23,7 @@ class config():
     checkpoint_folder = "src/models/expert/checkpoints/"
     data = "data/ds4_10k_each_type.npy"
     tensorboard = True
-    num_genes = 100
+    num_genes = 7000
     num_cell_types = 3
     lr = 1e-3
     epochs = 500
@@ -33,7 +33,7 @@ class config():
 
 config = config()
 experiment_buddy.register_defaults({'dataset': 'ds4', **config.__dict__})
-writer = experiment_buddy.deploy()
+writer = experiment_buddy.deploy(host='mila', disabled=True)
 
 
 def train(filepath_training_data, epochs=200):
@@ -51,7 +51,8 @@ def train(filepath_training_data, epochs=200):
     # criterium = nn.BCEWithLogitsLoss()
     criterium = nn.CrossEntropyLoss()
 
-    dataset = TranscriptomicsDataset(filepath_data=filepath_training_data, device=device)
+    # dataset = TranscriptomicsDataset(filepath_data=filepath_training_data, device=device)
+    dataset = RandomDataset(device, config.num_genes, 20, 2)
     train_and_val_dataset = train_val_dataset(dataset, val_split=0.25)
     train_dataloader = DataLoader(train_and_val_dataset["train"], batch_size=config.batch_size, shuffle=True)
     val_dataloader = DataLoader(train_and_val_dataset["val"], batch_size=config.batch_size, shuffle=True)
@@ -73,7 +74,7 @@ def train(filepath_training_data, epochs=200):
             val_accuracy = mean_accuracy
             logging.info(f"Saving new model...new accuracy (val): {val_accuracy}")
             torch.save(network.state_dict(), os.path.join(
-                config.checkpoint_folder, "classifier_ds4.pth")
+                config.checkpoint_folder, "delete_me.pth")
                        )
 
 

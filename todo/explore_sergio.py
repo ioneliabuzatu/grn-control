@@ -5,9 +5,9 @@ import pandas as pd
 import experiment_buddy
 
 # import config
-# from SERGIO.SERGIO.sergio import sergio
+from SERGIO.SERGIO.sergio import sergio
 # from SERGIO.Demo.sergio import sergio
-from steady_state import sergio
+# from steady_state import sergio
 # from sergio_plot_trajectories import sergio
 
 # params = {'num_genes': 100, 'num_cells_types': 9, 'num_cells_to_simulate': 5}
@@ -82,6 +82,7 @@ def plot_trajectory_from_sim(sim):
                     # if cell_type.Type == "MR":
                     #     writer.add_scalar(f"gene{cell_type.ID}/type{cell_type.binID}", cell_type.Conc[t], t)
 
+
 if __name__ == "__main__":
     start = time.time()
     steady_state(number_genes=100,
@@ -93,11 +94,12 @@ if __name__ == "__main__":
                  noise_type='dpd',
                  input_file_targets="../SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Interaction_cID_4.txt",
                  input_file_regs="../SERGIO/data_sets/De-noised_100G_9T_300cPerT_4_DS1/Regs_cID_4.txt")
-    #
-    # differentiated_states(config.filepath_small_dynamics_bifurcation_matrix,
-    #                       config.filepath_small_dynamics_targets,
-    #                       config.filepath_small_dynamics_regulons,
-    #                       number_of_cell_types=2,
-    #                       genes_number=12)
+
+    # bifurcation_matrix = "../SERGIO/data_sets/De-noised_100G_3T_300cPerT_dynamics_8_DS8/bMat_cID8.tab"
+    # regulons = "../SERGIO/data_sets/De-noised_100G_3T_300cPerT_dynamics_8_DS8/Regs_cID_8.txt"
+    # targets =  "../SERGIO/data_sets/De-noised_100G_3T_300cPerT_dynamics_8_DS8/Interaction_cID_8.txt"
+    # differentiated_states(bifurcation_matrix, targets, regulons,
+    #                       number_of_cell_types=3,
+    #                       genes_number=100)
 
     print(f"Took {time.time() - start:.4f} sec.")

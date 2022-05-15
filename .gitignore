@@ -139,3 +139,20 @@ resources/experiments
 resources/papers
 src/models/expert/checkpoints
 my_run_sim.py
+
+## to sort out later
+data/
+Untitled.ipynb
+check/
+models/
+outcmaes/
+resources/
+videos/
+distances.py
+gillespie_ssa.html
+how_to_work_with_seqfish_data.R
+seqfish.py
+src/all_about_visualization.py
+src/optimize_sc_noise.py
+ssa.py
+v2_sergio.py

@@ -11,7 +11,7 @@ from src.zoo_functions import open_datasets_json
 
 rl_train_agents_json_params = open_datasets_json(filepath="data/rl_agents_params.json")
 
-agent_to_train = [train_sac, train_ppo, train_ddpg, train_td3, train_a2c]
+agent_to_train = [train_a2c]  # train_td3, train_sac, train_ppo    # train_ddpg,
 
 config = {
     "policy_type": "MlpPolicy",

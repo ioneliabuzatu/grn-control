@@ -127,7 +127,7 @@ if __name__ == "__main__":
     d12 = mean_samples_wise_t1 - mean_samples_wise_t2
     print(f"distances: \n 0 <-> 1 {abs(d01.sum()):3f} \n 0 <-> 2 {abs(d02.sum()):3f} \n 1 <-> 2 {abs(d12.sum()):3f}")
 
-    dataset_dict = open_datasets_json(return_specific_dataset='DS4')
+    dataset_dict = open_datasets_json(return_specific_key='DS4')
     dataset = dataset_namedtuple(*dataset_dict.values())
 
     expert_checkpoint_filepath = "src/models/expert/checkpoints/classifier_ds4.pth"

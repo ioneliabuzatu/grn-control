@@ -211,6 +211,45 @@ class TranscriptomicsDataset(Dataset):
             self.data = normalize(self.data, axis=1, norm="max")
 
 
+class RandomDataset(Dataset):
+    def __init__(self, device, num_genes, num_samples, num_classes):
+        """
+        :param filepath_data: stacked npy file with first rows genes names and last column the labels.
+        :param device:
+        :param normalize_by_max:
+        :param num_genes_for_batch_sgd:
+
+        self.labels_encoding is ["2weeks_after_crush", "contro"] so `label 0` is disease and `label 1` is control.
+        """
+        self.device = device
+        self.data = np.random.random((num_samples*num_classes, num_genes))
+        # self.num_genes_to_zero_for_batch_sgd = (self.data.shape[1] - num_genes_for_batch_sgd) - 1
+        # self.num_genes_to_take_for_batch_sgd = num_genes_for_batch_sgd
+        print(f"data input has size: {self.data.shape}")
+        if isinstance(self.data[0, 0], str):
+            self.genes_names = self.data[0, :]
+            self.data = self.data[1:, :]
+        # self.labels_encoding, self.labels_categorical = np.unique(self.data[:, -1], return_inverse=True)
+        self.labels_encoding, self.labels_categorical = np.unique(
+            np.concatenate(
+                [np.array([str(x)] * num_samples, dtype=object) for x in range(num_classes)], axis=0
+            ),
+            return_inverse=True)
+
+    def __getitem__(self, idx):
+        # data = self.data[idx, :-1]
+        data = self.data[idx] # indices_to_set_to_zero = np.random.permutation(self.num_genes_to_zero_for_batch_sgd)
+        # data = data[indices_to_set_to_zero]
+        # data[indices_to_set_to_zero] = 0.0
+        x = torch.tensor(data, dtype=torch.float32)
+        y = torch.from_numpy(np.array(self.labels_categorical[idx], dtype=np.float32))
+        del data
+        return x, y
+
+    def __len__(self):
+        return len(self.data)
+
+
 def train_val_dataset(dataset, val_split=0.25):
     train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=val_split)
     datasets = {'train': Subset(dataset, train_idx), 'val': Subset(dataset, val_idx)}
