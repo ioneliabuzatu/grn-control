@@ -18,7 +18,8 @@ class GRNControlSimpleEnv(gym.Env):
         self.MAX_ACTIONS_VALUE = 10
 
         dataset_dict = src.zoo_functions.open_datasets_json(
-            return_specific_dataset='Dummy'
+            filepath="data/data_sets_loader.json",
+            return_specific_key='Dummy',
         )
         dataset = src.zoo_functions.dataset_namedtuple(*dataset_dict.values())
         self.sim = jax_simulator.Sim(
