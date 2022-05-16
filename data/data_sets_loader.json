@@ -1,4 +1,23 @@
 {
+  "GSE122662": {
+  "interactions": "data/GEO/GSE122662/interactions.txt",
+  "regulators": "data/GEO/GSE122662/MRs_basal_production_rates.txt",
+  "params_outliers_genes_noise": [
+    0.01,
+    0.8,
+    1
+  ],
+  "params_library_size_noise": [
+    4.8,
+    0.3
+  ],
+  "params_dropout_noise": [
+    20,
+    82
+  ],
+  "tot_genes": 100,
+  "tot_cell_types": 2
+},
   "Dummy": {
     "interactions": "data/Interaction_cID_4.txt",
     "regulators": "data/Regs_cID_4.txt",

@@ -108,7 +108,7 @@ def load_simulator(use_jax: bool, interactions_filepath, regulators_filepath, to
     return expr_clean
 
 
-def open_datasets_json(filepath: str = "data/data_sets_sergio.json", return_specific_key=None) -> dict:
+def open_datasets_json(filepath: str = "data/data_sets_loader.json", return_specific_key=None) -> dict:
     with open(filepath) as json_file:
         data_sets = json.load(json_file)
         if return_specific_key is not None:
