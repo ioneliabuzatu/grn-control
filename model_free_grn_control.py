@@ -21,6 +21,7 @@ experiment_buddy.register_defaults(config)
 
 for agent in agent_to_train:
     agent_params_kwargs = rl_train_agents_json_params[agent.__name__]
+    # agent_params_kwargs["env_name"] = "gene_control-simple-v0"
     buddy = experiment_buddy.deploy(
         host="", disabled=False,
         wandb_kwargs={
@@ -31,7 +32,7 @@ for agent in agent_to_train:
             'project': 'RL',
             'reinit': True
         },
-        experiment_id=agent.__name__
+        wandb_run_name=agent.__name__
     )
     run = buddy.run
 
