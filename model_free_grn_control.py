@@ -21,8 +21,7 @@ experiment_buddy.register_defaults(config)
 
 for agent in agent_to_train:
     agent_params_kwargs = rl_train_agents_json_params[agent.__name__]
-    # agent_params_kwargs["model_learn_kwargs"] = {"total_timesteps": 1}
-    agent_params_kwargs["env_name"] = "gene_control-simple-v0"
+    # agent_params_kwargs["env_name"] = "gene_control-simple-v0"
     buddy = experiment_buddy.deploy(
         host="", disabled=False,
         wandb_kwargs={
