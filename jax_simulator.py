@@ -3,6 +3,7 @@ from copy import deepcopy
 
 import jax
 import jax.numpy as jnp
+import networkx as nx
 import numpy as np
 
 from src.load_utils import load_grn_jax, topo_sort_graph_layers, get_basal_production_rate
@@ -44,7 +45,8 @@ class Sim:
 
     def build(self):
         adjacency, graph = load_grn_jax(self.interactions_filename, self.adjacency)
-        self.adjacency = jnp.array(adjacency)
+
+        self.adjacency = jnp.array(adjacency)  # TODO change it to jnp
         regulators, genes = np.where(self.adjacency)
 
         # TODO: there is a loop too much below
@@ -57,7 +59,7 @@ class Sim:
             if g in self.repressive_dict:
                 v = self.repressive_dict[g].tolist()
             else:
-                v = self.repressive_dict[0] * False
+                v = self.repressive_dict[genes[0]] * False
 
             v = tuple(tuple(vv) for vv in v)
             repressive_list.append(tuple(v))
