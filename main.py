@@ -22,6 +22,8 @@ from jax.example_libraries import optimizers
 from scipy.spatial import distance_matrix
 from src.all_about_visualization import plot_heatmap_all_expressions
 
+# jax.config.update('jax_platform_name', 'cpu')
+
 
 def cross_entropy(logprobs, targets):
     """
@@ -102,67 +104,60 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 
 
 if __name__ == "__main__":
-    ds4_ground_truth_initial_dist = np.load("data/ds4_10k_each_type.npy")
-    plt_mean = np.mean(ds4_ground_truth_initial_dist, axis=0)
-    plt_std = np.std(ds4_ground_truth_initial_dist, axis=0)
+    # ds4_ground_truth_initial_dist = np.load("data/ds4_10k_each_type.npy")
 
-    params = {'num_genes': 100, 'NUM_SIM_CELLS': 200}
+    params = {'num_genes': '', 'NUM_SIM_CELLS': 200}
     experiment_buddy.register_defaults(params)
-    buddy = experiment_buddy.deploy(host="", disabled=False)
-    fig = plt.figure(figsize=(10, 7))
-    plt.plot(plt_mean)
-    buddy.run.log({"ground_truth/mean": fig}, step=0)
-    plt.close()
-    fig = plt.figure()
-    plt.plot(plt_std)
-    buddy.run.log({"ground_truth/std": fig}, step=0)
-    plt.close()
-
-    # manual calculation of some distance matrix
-    mean_samples_wise_t0 = ds4_ground_truth_initial_dist[:10000].mean(axis=0)
-    mean_samples_wise_t1 = ds4_ground_truth_initial_dist[10000:20000].mean(axis=0)
-    mean_samples_wise_t2 = ds4_ground_truth_initial_dist[20000:].mean(axis=0)
-    d01 = mean_samples_wise_t0 - mean_samples_wise_t1
-    d02 = mean_samples_wise_t0 - mean_samples_wise_t2
-    d12 = mean_samples_wise_t1 - mean_samples_wise_t2
-    print(f"distances: \n 0 <-> 1 {abs(d01.sum()):3f} \n 0 <-> 2 {abs(d02.sum()):3f} \n 1 <-> 2 {abs(d12.sum()):3f}")
+    buddy = experiment_buddy.deploy(host="", disabled=True)
 
     dataset_dict = open_datasets_json(return_specific_key='DS4')
     dataset = dataset_namedtuple(*dataset_dict.values())
 
-    expert_checkpoint_filepath = "src/models/expert/checkpoints/classifier_ds4.pth"
-    classifier = CellStateClassifier(num_genes=dataset.tot_genes, num_cell_types=dataset.tot_cell_types).to("cpu")
-    loaded_checkpoint = torch.load(expert_checkpoint_filepath, map_location=lambda storage, loc: storage)
-    classifier.load_state_dict(loaded_checkpoint)
+    tot_genes = 500
+    tot_cell_types = 2
+    interactions_filepath = f"data/interactions_random_graph_{tot_genes}_genes.txt"
+
+    # expert_checkpoint_filepath = "src/models/expert/checkpoints/classifier_ds4.pth"
+    classifier = CellStateClassifier(num_genes=tot_genes, num_cell_types=tot_cell_types).to("cpu")
+    # loaded_checkpoint = torch.load(expert_checkpoint_filepath, map_location=lambda storage, loc: storage)
+    # classifier.load_state_dict(loaded_checkpoint)
     classifier.eval()
     classifier = torch_to_jax(classifier)
 
+    # sim = Sim(
+    #     num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types,
+    #     simulation_num_steps=params['NUM_SIM_CELLS'],
+    #     interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.9
+    # )
+
+
     sim = Sim(
-        num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types,
+        num_genes=tot_genes, num_cells_types=tot_cell_types,
         simulation_num_steps=params['NUM_SIM_CELLS'],
-        interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.9
+        interactions_filepath=interactions_filepath, regulators_filepath=dataset.regulators, noise_amplitude=0.9
     )
+    
     adjacency, graph, layers = sim.build()
 
-    fig = plot_heatmap_all_expressions(
-        ds4_ground_truth_initial_dist.reshape(3, 100, 10000).mean(2).T,
-        layers[0],
-        show=False)
+    # fig = plot_heatmap_all_expressions(
+    #     ds4_ground_truth_initial_dist.reshape(3, 100, 10000).mean(2).T,
+    #     layers[0],
+    #     show=False)
     buddy.run.log({"heatmap/expression/gd": wandb.Image(fig)}, step=0)
 
     add_technical_noise = AddTechnicalNoiseJax(
         dataset.tot_genes, dataset.tot_cell_types, params['NUM_SIM_CELLS'],
         dataset.params_outliers_genes_noise, dataset.params_library_size_noise, dataset.params_dropout_noise
     )
-
     if is_debugger_active():
         with jax.disable_jit():
-            control(sim, 100, dataset.tot_cell_types, len(sim.layers[0]), classifier,
+            control(sim, 5, tot_cell_types, len(sim.layers[0]), classifier,
                     writer=buddy,
                     # add_technical_noise_function=add_technical_noise
                     )
     else:
-        control(sim, 100, dataset.tot_cell_types, len(sim.layers[0]), classifier,
+        num_episodes = 1
+        control(sim, num_episodes, tot_cell_types, len(sim.layers[0]), classifier,
                 writer=buddy,
                 # add_technical_noise_function=add_technical_noise
                 )
