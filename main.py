@@ -19,8 +19,8 @@ import experiment_buddy
 import wandb
 import seaborn as sns
 from jax.example_libraries import optimizers
-from scipy.spatial import distance_matrix
-from src.all_about_visualization import plot_heatmap_all_expressions
+# from scipy.spatial import distance_matrix
+# from src.all_about_visualization import plot_heatmap_all_expressions
 
 # jax.config.update('jax_platform_name', 'cpu')
 
@@ -110,8 +110,8 @@ if __name__ == "__main__":
     experiment_buddy.register_defaults(params)
     buddy = experiment_buddy.deploy(host="", disabled=True)
 
-    dataset_dict = open_datasets_json(return_specific_key='DS4')
-    dataset = dataset_namedtuple(*dataset_dict.values())
+    # dataset_dict = open_datasets_json(return_specific_key='DS4')
+    # dataset = dataset_namedtuple(*dataset_dict.values())
 
     tot_genes = 500
     tot_cell_types = 2
@@ -134,10 +134,12 @@ if __name__ == "__main__":
     sim = Sim(
         num_genes=tot_genes, num_cells_types=tot_cell_types,
         simulation_num_steps=params['NUM_SIM_CELLS'],
-        interactions_filepath=interactions_filepath, regulators_filepath=dataset.regulators, noise_amplitude=0.9
+        interactions_filepath=interactions_filepath, regulators_filepath="data/Regs_cID_4.txt", noise_amplitude=0.9
     )
-    
+
+    # start = time.time()
     adjacency, graph, layers = sim.build()
+    # print(f"Took {time.time() - start:.3f} secs.")
 
     # fig = plot_heatmap_all_expressions(
     #     ds4_ground_truth_initial_dist.reshape(3, 100, 10000).mean(2).T,
@@ -145,10 +147,10 @@ if __name__ == "__main__":
     #     show=False)
     buddy.run.log({"heatmap/expression/gd": wandb.Image(fig)}, step=0)
 
-    add_technical_noise = AddTechnicalNoiseJax(
-        dataset.tot_genes, dataset.tot_cell_types, params['NUM_SIM_CELLS'],
-        dataset.params_outliers_genes_noise, dataset.params_library_size_noise, dataset.params_dropout_noise
-    )
+    # add_technical_noise = AddTechnicalNoiseJax(
+    #     dataset.tot_genes, dataset.tot_cell_types, params['NUM_SIM_CELLS'],
+    #     dataset.params_outliers_genes_noise, dataset.params_library_size_noise, dataset.params_dropout_noise
+    # )
     if is_debugger_active():
         with jax.disable_jit():
             control(sim, 5, tot_cell_types, len(sim.layers[0]), classifier,

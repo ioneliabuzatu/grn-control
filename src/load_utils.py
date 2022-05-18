@@ -35,7 +35,7 @@ def load_grn_jax(interactions_filename, adjacency):
             target_node_id, num_regulators = int(float(row.pop(0))), int(float(row.pop(0)))
             regulators_nodes_ids = [int(float(row.pop(0))) for x in range(num_regulators)]
             contributions = [float(row.pop(0)) for x in range(num_regulators)]
-            coop_state = [float(row.pop(0)) for x in range(num_regulators)]  # TODO add it
+            # coop_state = [float(row.pop(0)) for x in range(num_regulators)]  # TODO add it
 
             # adjacency = adjacency.at[regulators_nodes_ids, target_node_id].set(contributions)
             adjacency[regulators_nodes_ids, target_node_id] = contributions

@@ -50,9 +50,17 @@ class Sim:
         regulators, genes = np.where(self.adjacency)
 
         # TODO: there is a loop too much below
-        self.regulators_dict = dict(zip(genes, [np.array(np.where(self.adjacency[:, g])[0]) for g in genes]))
-        self.repressive_dict = dict(
-            zip(genes, [self.adjacency[:, g, None].repeat(self.num_cell_types, axis=1) < 0 for g in genes]))
+        is_connected = []
+        is_repressor = []
+        for g in genes:
+            edges = np.array(np.where(self.adjacency[:, g])[0])
+            repressor = self.adjacency[:, g, None].repeat(self.num_cell_types, axis=1) < 0
+
+            is_connected.append(edges)
+            is_repressor.append(repressor)
+
+        self.regulators_dict = dict(zip(genes, is_connected))
+        self.repressive_dict = dict(zip(genes, is_repressor))
 
         repressive_list = list()
         for g in range(self.num_genes):
