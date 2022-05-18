@@ -137,15 +137,15 @@ if __name__ == "__main__":
         interactions_filepath=interactions_filepath, regulators_filepath="data/Regs_cID_4.txt", noise_amplitude=0.9
     )
 
-    # start = time.time()
+    start = time.time()
     adjacency, graph, layers = sim.build()
-    # print(f"Took {time.time() - start:.3f} secs.")
+    print(f"Took {time.time() - start:.3f} secs.")
 
     # fig = plot_heatmap_all_expressions(
     #     ds4_ground_truth_initial_dist.reshape(3, 100, 10000).mean(2).T,
     #     layers[0],
     #     show=False)
-    buddy.run.log({"heatmap/expression/gd": wandb.Image(fig)}, step=0)
+    # buddy.run.log({"heatmap/expression/gd": wandb.Image(fig)}, step=0)
 
     # add_technical_noise = AddTechnicalNoiseJax(
     #     dataset.tot_genes, dataset.tot_cell_types, params['NUM_SIM_CELLS'],
