@@ -71,6 +71,7 @@ class Sim:
     def run_one_rollout(self, actions=None):
         """return the gene expression of shape [samples, genes]"""
         if actions is not None:
+            actions = jnp.array(np.random.rand(len(self.layers[0])))
             basal_production_rates = jnp.zeros((self.num_genes, self.num_cell_types))
             for action_gene, master_id in zip(actions, self.layers[0]):
                 basal_production_rates = basal_production_rates.at[master_id].set(action_gene)
@@ -100,6 +101,7 @@ class Sim:
         mean_expression = {idx: jnp.mean(x[idx], axis=0) for idx in master_layer}
 
         for num_layer, layer in enumerate(layers_copy[1:], start=1):
+            print("num layer:", num_layer)
             key, subkey = jax.random.split(key)
             subkeys = jax.random.split(subkey, self.num_cell_types)
 
@@ -164,13 +166,17 @@ class Sim:
     @functools.partial(jax.jit, static_argnums=(0,))
     def euler_maruyama_master(self, curr_genes_expression, basal_production_rate, q, key: jax.random.PRNGKey):
         production_rates = basal_production_rate
-        key, subkey = jax.random.split(key)
-        dw_p = jax.random.normal(subkey, shape=(self.simulation_num_steps -1,))
-        key, subkey = jax.random.split(key)
-        dw_d = jax.random.normal(subkey, shape=(self.simulation_num_steps-1,))
+        # key, subkey = jax.random.split(key)
+        # dw_p = jax.random.normal(subkey, shape=(self.simulation_num_steps -1,))
+        # key, subkey = jax.random.split(key)
+        # dw_d = jax.random.normal(subkey, shape=(self.simulation_num_steps-1,))
+
+        dw_p = jnp.ones(shape=(self.simulation_num_steps -1,))
+        dw_d = jnp.ones(shape=(self.simulation_num_steps-1,))
 
         def concentration_forward(carry, noises):
             curr_concentration = carry
+            print("master compiling step...")
             decayed_production = jnp.multiply(0.8, curr_concentration)
             dw_production, dw_decay = noises
 
@@ -189,19 +195,22 @@ class Sim:
             return next_gene_conc, next_gene_conc
 
         noises = (dw_p, dw_d)
-        gene_trajectory_concentration = jax.lax.scan(concentration_forward, curr_genes_expression, noises,
-                                                     length=self.simulation_num_steps-1)[1]
+        gene_trajectory_concentration = jax.lax.scan(concentration_forward, curr_genes_expression, noises, length=self.simulation_num_steps-1)[1]
         return gene_trajectory_concentration
 
-    @functools.partial(jax.jit, static_argnums=(0,))
+    @functools.partial(jax.jit, static_argnums=(0))
     def euler_maruyama_targets(self, curr_genes_expression, q, production_rates, key):
         key, subkey = jax.random.split(key)
-        dw_p = jax.random.normal(key, shape=(self.simulation_num_steps -1,))
-        key, subkey = jax.random.split(key)
-        dw_d = jax.random.normal(key, shape=(self.simulation_num_steps - 1,))
+        # dw_p = jax.random.normal(key, shape=(self.simulation_num_steps -1,))
+        # key, subkey = jax.random.split(key)
+        # dw_d = jax.random.normal(key, shape=(self.simulation_num_steps - 1,))
+
+        dw_p = jnp.ones(shape=(self.simulation_num_steps -1,))
+        dw_d = jnp.ones(shape=(self.simulation_num_steps-1,))
 
         def step(carry, state):
             curr_x = carry
+            print("target compiling step...")
             dw_d_t, dw_p_t, production_rate_t = state
             decay = jnp.multiply(0.8, curr_x)
             amplitude_p = q * jnp.power(production_rate_t, 0.5)
