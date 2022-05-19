@@ -47,31 +47,23 @@ class Sim:
         adjacency, graph = load_grn_jax(self.interactions_filename, self.adjacency)
 
         self.adjacency = jnp.array(adjacency)  # TODO change it to jnp
-        regulators, genes = np.where(self.adjacency)
+        self.regulators_dict = dict()
+        self.is_repressive = list()
 
-        # TODO: there is a loop too much below
-        is_connected = []
-        is_repressor = []
-        for g in genes:
-            edges = np.array(np.where(self.adjacency[:, g])[0])
-            repressor = self.adjacency[:, g, None].repeat(self.num_cell_types, axis=1) < 0
-
-            is_connected.append(edges)
-            is_repressor.append(repressor)
-
-        self.regulators_dict = dict(zip(genes, is_connected))
-        self.repressive_dict = dict(zip(genes, is_repressor))
-
-        repressive_list = list()
         for g in range(self.num_genes):
-            if g in self.repressive_dict:
-                v = self.repressive_dict[g].tolist()
-            else:
-                v = self.repressive_dict[genes[0]] * False
+            is_regulator = self.adjacency[:, g]
+            regulator_indices = np.where(is_regulator)[0]
 
-            v = tuple(tuple(vv) for vv in v)
-            repressive_list.append(tuple(v))
-        self.repressive_dict = tuple(repressive_list)
+            if len(regulator_indices) > 0:
+                # regulators.append(regulator_indices)
+                self.regulators_dict[g] = regulator_indices
+                repressive_dict = (self.adjacency[:, g, None].repeat(self.num_cell_types, axis=1) < 0).tolist()
+            else:
+                repressive_dict = (np.zeros((self.num_genes, self.num_cell_types), dtype=bool)).tolist()
+
+            self.is_repressive.append(tuple(tuple(vv) for vv in repressive_dict))
+
+        self.is_repressive = tuple(self.is_repressive)
 
         self.layers = topo_sort_graph_layers(graph)
         return adjacency, graph, self.layers
@@ -116,7 +108,7 @@ class Sim:
             x_0.update(dict(zip(layer, self.init_concentration(tuple(layer), half_response, mean_expression))))
 
             curr_genes_expression = x_0
-            params = Params(self.regulators_dict, self.adjacency, self.repressive_dict)
+            params = Params(self.regulators_dict, self.adjacency, self.is_repressive)
 
             production_rates = jnp.array(
                 [calculate_production_rate(params, gene, half_response, x) for gene in
@@ -163,7 +155,7 @@ class Sim:
     @functools.partial(jax.jit, static_argnums=(0, 1))
     def init_concentration(self, layer: list, half_response, mean_expression):
         """ Init concentration genes; Note: calculate_half_response should be run before this method """
-        params = Params(self.regulators_dict, self.adjacency, self.repressive_dict)
+        params = Params(self.regulators_dict, self.adjacency, self.is_repressive)
         rates = jnp.array([calculate_production_rate_init(params, gene, half_response, mean_expression) for gene in
                            layer])
         rates = rates / self.decay_lambda
