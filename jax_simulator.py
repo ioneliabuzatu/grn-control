@@ -1,10 +1,13 @@
 import functools
+import time
 from copy import deepcopy
 
 import jax
 import jax.numpy as jnp
 import networkx as nx
 import numpy as np
+from matplotlib import pyplot as plt
+from matplotlib.ticker import FormatStrFormatter
 
 from src.load_utils import load_grn_jax, topo_sort_graph_layers, get_basal_production_rate
 
@@ -84,12 +87,22 @@ class Sim:
         return x
 
     def simulate_expression_layer_wise(self, basal_production_rates, seed=0):
+        fig, ax = plt.subplots()
+        ax.yaxis.set_major_formatter(FormatStrFormatter('%g'))
+        # ax.yaxis.set_ticks(np.arange(0, 10, 0.25))
+        ax.xaxis.set_ticks(np.arange(0, len(self.layers), 1))
+        ax.set_xlabel("layer")
+        ax.set_ylabel("runtime(secs)")
+        y_axis_plot = []
+
         key = jax.random.PRNGKey(seed)
         key, subkey = jax.random.split(key)
         subkeys = jax.random.split(subkey, self.num_cell_types)
 
         layers_copy = [np.array(l) for l in deepcopy(self.layers)]  # TODO: remove deepcopy
         master_layer = np.array(layers_copy[0])
+
+        start_master_layer = time.time()
         init_master_layer_concentration = (basal_production_rates[master_layer] / self.decay_lambda)
         x_0 = dict(zip(master_layer, init_master_layer_concentration))
         curr_genes_expression = x_0
@@ -100,8 +113,12 @@ class Sim:
                                          trajectory_master_layer.T[:, i, :])) for i in range(len(master_layer))}
         mean_expression = {idx: jnp.mean(x[idx], axis=0) for idx in master_layer}
 
+        runtime = time.time() - start_master_layer
+        print("master layer took", time.time() - start_master_layer)
+        y_axis_plot.append(runtime)
+
         for num_layer, layer in enumerate(layers_copy[1:], start=1):
-            print("num layer:", num_layer)
+            start_layer = time.time()
             key, subkey = jax.random.split(key)
             subkeys = jax.random.split(subkey, self.num_cell_types)
 
@@ -122,6 +139,12 @@ class Sim:
                       range(len(layer))})
             mean_expression.update({idx: jnp.mean(x[idx], axis=0) for idx in layer})
 
+            runtime = time.time()-start_layer
+            print(f"num layer {num_layer} took {runtime}")
+            y_axis_plot.append(runtime)
+
+        plt.plot(np.arange(0, len(y_axis_plot), 1), y_axis_plot)
+        plt.show()
         return x
 
     def simulate_master_layer(self, basal_production_rate, curr_genes_expression, layer, key):
