@@ -87,12 +87,6 @@ class Sim:
         return x
 
     def simulate_expression_layer_wise(self, basal_production_rates, seed=0):
-        fig, ax = plt.subplots()
-        ax.yaxis.set_major_formatter(FormatStrFormatter('%g'))
-        # ax.yaxis.set_ticks(np.arange(0, 10, 0.25))
-        ax.xaxis.set_ticks(np.arange(0, len(self.layers), 1))
-        ax.set_xlabel("layer")
-        ax.set_ylabel("runtime(secs)")
         y_axis_plot = []
 
         key = jax.random.PRNGKey(seed)
@@ -110,7 +104,7 @@ class Sim:
         trajectory_master_layer = jax.vmap(self.simulate_master_layer, in_axes=(1, 0, None, 0))(
             basal_production_rates, curr_genes_expression, master_layer, subkeys)
         x = {master_layer[i]: jnp.vstack((x_0[master_layer[i]].reshape(1, -1),
-                                         trajectory_master_layer.T[:, i, :])) for i in range(len(master_layer))}
+                                          trajectory_master_layer.T[:, i, :])) for i in range(len(master_layer))}
         mean_expression = {idx: jnp.mean(x[idx], axis=0) for idx in master_layer}
 
         runtime = time.time() - start_master_layer
@@ -122,38 +116,39 @@ class Sim:
             key, subkey = jax.random.split(key)
             subkeys = jax.random.split(subkey, self.num_cell_types)
 
-            # start = time.time()
             half_response = dict(zip(layer, self.calculate_half_response(tuple(layer), mean_expression)))
-            # print("half-response time:", time.time() - start)
 
-            # start = time.time()
             x_0.update(dict(zip(layer, self.init_concentration(tuple(layer), half_response, mean_expression))))
-            # print("initialisation time:", time.time() - start)
 
             curr_genes_expression = x_0
             params = Params(self.regulators_dict, self.adjacency, self.is_repressive)
 
-            # start = time.time()
             production_rates = jnp.array(
                 [calculate_production_rate(params, gene, half_response, x) for gene in
                  layer])
-            # print(production_rates.shape)
-            # print("prod rate time:", time.time() - start)
-            # start = time.time()
             trajectories = jax.vmap(self.simulate_targets, in_axes=(2, 0, None, 0))(
                 production_rates, curr_genes_expression, layer, subkeys
             )
-            # print("trajectories time:", time.time()-start)
             x.update({layer[i]: jnp.vstack((x_0[layer[i]].reshape(1, -1), trajectories.T[:, i, :])) for i in
                       range(len(layer))})
             mean_expression.update({idx: jnp.mean(x[idx], axis=0) for idx in layer})
 
-            runtime = time.time()-start_layer
+            runtime = time.time() - start_layer
             print(f"num layer {num_layer} took {runtime}")
-            y_axis_plot.append(runtime)
-
-        plt.plot(np.arange(0, len(y_axis_plot), 1), y_axis_plot)
-        plt.show()
+        #     y_axis_plot.append(runtime)
+        #
+        # plt.figure(figsize=(4, 4))
+        # plt.title("runtime of layers compiling")
+        # step = 1.0/len(y_axis_plot)
+        # x_pos = np.arange(0.0, 1.0, step)[:len(y_axis_plot)]
+        # width = step-(step/3)  # width has to be lower than 'step'
+        # print(step, width)
+        # plt.bar(x_pos, y_axis_plot, color='pink', width=width, align='center')
+        # # plt.xticks(y_axis_plot, np.arange(0, len(y_axis_plot)))
+        # plt.xlabel("layer")
+        # plt.ylabel("secs")
+        # plt.tight_layout()
+        # plt.show()
         return x
 
     def simulate_master_layer(self, basal_production_rate, curr_genes_expression, layer, key):
@@ -203,13 +198,10 @@ class Sim:
 @functools.partial(jax.jit, static_argnums=(4, 5))
 def euler_maruyama_master(curr_genes_expression, basal_production_rate, q, key, simulation_num_steps, dt):
     production_rates = basal_production_rate
-    # key, subkey = jax.random.split(key)
-    # dw_p = jax.random.normal(subkey, shape=(self.simulation_num_steps -1,))
-    # key, subkey = jax.random.split(key)
-    # dw_d = jax.random.normal(subkey, shape=(self.simulation_num_steps-1,))
-
-    dw_p = jnp.ones(shape=(simulation_num_steps -1,))
-    dw_d = jnp.ones(shape=(simulation_num_steps-1,))
+    key, subkey = jax.random.split(key)
+    dw_p = jax.random.normal(subkey, shape=(simulation_num_steps - 1,))
+    key, subkey = jax.random.split(key)
+    dw_d = jax.random.normal(subkey, shape=(simulation_num_steps - 1,))
 
     def concentration_forward(carry, noises):
         curr_concentration = carry
@@ -232,19 +224,17 @@ def euler_maruyama_master(curr_genes_expression, basal_production_rate, q, key, 
         return next_gene_conc, next_gene_conc
 
     noises = (dw_p, dw_d)
-    gene_trajectory_concentration = jax.lax.scan(concentration_forward, curr_genes_expression, noises, length=simulation_num_steps-1)[1]
+    gene_trajectory_concentration = \
+        jax.lax.scan(concentration_forward, curr_genes_expression, noises, length=simulation_num_steps - 1)[1]
     return gene_trajectory_concentration
 
 
 @functools.partial(jax.jit, static_argnums=(4, 5))
 def euler_maruyama_targets(curr_genes_expression, q, production_rates, key, simulation_num_steps, dt):
     key, subkey = jax.random.split(key)
-    # dw_p = jax.random.normal(key, shape=(simulation_num_steps -1,))
-    # key, subkey = jax.random.split(key)
-    # dw_d = jax.random.normal(key, shape=(simulation_num_steps - 1,))
-
-    dw_p = jnp.ones(shape=(simulation_num_steps-1,))
-    dw_d = jnp.ones(shape=(simulation_num_steps-1,))
+    dw_p = jax.random.normal(subkey, shape=(simulation_num_steps - 1,))
+    key, subkey = jax.random.split(key)
+    dw_d = jax.random.normal(subkey, shape=(simulation_num_steps - 1,))
 
     def step(carry, state):
         curr_x = carry
@@ -275,7 +265,7 @@ def calculate_production_rate_init(params: Params, gene, half_response, mean_exp
     regulators = params.regulators_dict[gene]
     mean_expression = jnp.vstack(tuple([mean_expression[reg] for reg in regulators]))
     half_response = half_response[gene]
-    is_repressive = tuple(params.repressive_dict[gene][regulator] for regulator in regulators)
+    is_repressive = jnp.array([params.repressive_dict[gene][regulator] for regulator in regulators])
     absolute_k = jnp.abs(params.adjacency[regulators][:, gene])
 
     # rate = hill_function_at_init(
@@ -285,7 +275,6 @@ def calculate_production_rate_init(params: Params, gene, half_response, mean_exp
     #     absolute_k
     # )
 
-    is_repressive = jnp.array(is_repressive)
     rate = jax.vmap(hill_function, in_axes=(0, None, 0, 0))(mean_expression, half_response, is_repressive,
                                                             absolute_k)
     rate = rate.sum(axis=0)
@@ -296,7 +285,7 @@ def calculate_production_rate(params: Params, gene, half_response, previous_laye
     regulators = params.regulators_dict[gene]
     regulators_concentration = jnp.stack(tuple(previous_layer_trajectory[reg] for reg in regulators))
     half_response = half_response[gene]
-    is_repressive = tuple(params.repressive_dict[gene][regulator] for regulator in regulators)
+    is_repressive = jnp.array([params.repressive_dict[gene][regulator] for regulator in regulators])
     absolute_k = jnp.abs(params.adjacency[regulators][:, gene])
 
     # rate = hill_function(
@@ -306,8 +295,8 @@ def calculate_production_rate(params: Params, gene, half_response, previous_laye
     #     absolute_k
     # )
 
-    is_repressive = jnp.array(is_repressive)
-    rate = jax.vmap(hill_function, in_axes=(0, None, 0, 0))(regulators_concentration, half_response, is_repressive, absolute_k)
+    rate = jax.vmap(hill_function, in_axes=(0, None, 0, 0))(regulators_concentration, half_response, is_repressive,
+                                                            absolute_k)
     rate = rate.sum(axis=0)
     return rate
 
@@ -321,7 +310,7 @@ def hill_function_at_init(mean_expression, half_response, is_repressive, absolut
     rate = nom / denom
     rate2 = jnp.where(is_repressive, 1 - rate, rate)
     # k_rate = jnp.einsum("r,rt->t", absolute_k, rate2)
-    return rate2*absolute_k  # k_rate
+    return rate2 * absolute_k  # k_rate
 
 
 # @functools.partial(jax.jit, static_argnums=(2,))
@@ -331,7 +320,7 @@ def hill_function(regulators_concentration, half_response, is_repressive, absolu
     # is_repressive = jnp.array(is_repressive)
     nom = jnp.power(regulators_concentration, Sim.hill_coefficient)
     denom = (jnp.power(half_response, Sim.hill_coefficient) + jnp.power(regulators_concentration, Sim.hill_coefficient))
-    rate = (nom / denom)#.swapaxes(0, 1)
+    rate = (nom / denom)  # .swapaxes(0, 1)
     rate2 = jnp.where(is_repressive, 1 - rate, rate)
     # k_rate = jnp.einsum("r,trs->ts", absolute_k, rate2)
-    return rate2*absolute_k  # k_rate
+    return rate2 * absolute_k  # k_rate
