@@ -50,7 +50,7 @@ def load_grn_jax(interactions_filename, adjacency):
 
 def topo_sort_graph_layers(graph: nx.DiGraph) -> typing.Tuple[np.ndarray, ...]: # TODO this was changed to tuple xd,
     # rever back to list
-    layers = tuple(tuple(l) for l in nx.topological_generations(graph))
+    layers = tuple(np.array(l) for l in nx.topological_generations(graph))
     return layers
 
 

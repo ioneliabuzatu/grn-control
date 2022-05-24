@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 import torch
 import sys
-from jax_simulator import Sim
+from array_sim import Sim
 from src.models.expert.classfier_cell_state import CellStateClassifier
 from src.models.expert.classfier_cell_state import torch_to_jax
 from src.techinical_noise import AddTechnicalNoiseJax
@@ -19,6 +19,8 @@ import experiment_buddy
 import wandb
 import seaborn as sns
 from jax.example_libraries import optimizers
+
+
 # from scipy.spatial import distance_matrix
 # from src.all_about_visualization import plot_heatmap_all_expressions
 
@@ -129,7 +131,6 @@ if __name__ == "__main__":
     #     simulation_num_steps=params['NUM_SIM_CELLS'],
     #     interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.9
     # )
-
 
     sim = Sim(
         num_genes=tot_genes, num_cells_types=tot_cell_types,
