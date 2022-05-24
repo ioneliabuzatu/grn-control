@@ -118,9 +118,10 @@ class Sim:
             params = Params(self.regulators_dict, self.adjacency, self.is_repressive)
 
             # start = time.time()
-            production_rates = jnp.array(
-                [calculate_production_rate(params, gene, half_response, x) for gene in
-                 layer])
+            # production_rates = jnp.array(
+            #     [calculate_production_rate(params, gene, half_response, x) for gene in
+            #      layer])
+            production_rates = jax.vmap(_calculate_production_rate)(*get_gene_var(params, tuple(layer), half_response, x))
             # print(production_rates.shape)
             # print("prod rate time:", time.time() - start)
             # start = time.time()
@@ -172,10 +173,37 @@ class Sim:
     def init_concentration(self, layer: list, half_response, mean_expression):
         """ Init concentration genes; Note: calculate_half_response should be run before this method """
         params = Params(self.regulators_dict, self.adjacency, self.is_repressive)
-        rates = jnp.array([calculate_production_rate_init(params, gene, half_response, mean_expression) for gene in
-                           layer])
+        # rates = jnp.array([calculate_production_rate_init(params, gene, half_response, mean_expression) for gene in
+        #                    layer])
+
+        rates = jax.vmap(_calculate_production_rate)(*get_gene_var(params, layer, half_response, mean_expression))
+
         rates = rates / self.decay_lambda
         return rates
+
+
+def pad_to_fix_length(arr, length, constant=0):
+    siz = arr.shape[0]
+    padding = [(0, 0)] * arr.ndim
+    padding[0] = (0, length-siz)
+    new_arr = jnp.pad(arr, padding, constant_values=constant)
+    return new_arr
+
+
+def get_gene_var(params, layer, half_response, mean_expression):
+    regulators = {gene: params.regulators_dict[gene] for gene in layer}
+    pad_to = max([len(reg) for reg in regulators.values()])
+
+    mean_expression = jnp.array(
+        [pad_to_fix_length(jnp.stack(tuple([mean_expression[reg] for reg in regulators[gene]])), pad_to) for gene in
+         layer])
+    half_response = jnp.array([half_response[gene] for gene in layer])
+    is_repressive = jnp.array([pad_to_fix_length(
+        jnp.array([params.repressive_dict[gene][regulator] for regulator in regulators[gene]]), pad_to, True) for gene
+                               in layer])
+    absolute_k = jnp.array(
+        [pad_to_fix_length(jnp.abs(params.adjacency[regulators[gene]][:, gene]), pad_to) for gene in layer])
+    return mean_expression, half_response, is_repressive, absolute_k
 
 
 @functools.partial(jax.jit, static_argnums=(4, 5))
@@ -270,6 +298,14 @@ def calculate_production_rate_init(params: Params, gene, half_response, mean_exp
     return rate
 
 
+def _calculate_production_rate(mean_expression, half_response, is_repressive,
+                                                            absolute_k):
+    rate = jax.vmap(hill_function, in_axes=(0, None, 0, 0))(mean_expression, half_response, is_repressive,
+                                                            absolute_k)
+    rate = rate.sum(axis=0)
+    return rate
+
+
 def calculate_production_rate(params: Params, gene, half_response, previous_layer_trajectory):
     regulators = params.regulators_dict[gene]
     regulators_concentration = jnp.stack(tuple(previous_layer_trajectory[reg] for reg in regulators))
@@ -291,15 +327,15 @@ def calculate_production_rate(params: Params, gene, half_response, previous_laye
 
 
 # @functools.partial(jax.jit, static_argnums=(2,))
-@jax.jit
-def hill_function_at_init(mean_expression, half_response, is_repressive, absolute_k):
-    # is_repressive = jnp.array(is_repressive)
-    nom = jnp.power(mean_expression, Sim.hill_coefficient)
-    denom = (jnp.power(half_response, Sim.hill_coefficient) + jnp.power(mean_expression, Sim.hill_coefficient))
-    rate = nom / denom
-    rate2 = jnp.where(is_repressive, 1 - rate, rate)
-    # k_rate = jnp.einsum("r,rt->t", absolute_k, rate2)
-    return rate2*absolute_k  # k_rate
+# @jax.jit
+# def hill_function_at_init(mean_expression, half_response, is_repressive, absolute_k):  # TODO: remove; redundant now
+#     # is_repressive = jnp.array(is_repressive)
+#     nom = jnp.power(mean_expression, Sim.hill_coefficient)
+#     denom = (jnp.power(half_response, Sim.hill_coefficient) + jnp.power(mean_expression, Sim.hill_coefficient))
+#     rate = nom / denom
+#     rate2 = jnp.where(is_repressive, 1 - rate, rate)
+#     # k_rate = jnp.einsum("r,rt->t", absolute_k, rate2)
+#     return rate2*absolute_k  # k_rate
 
 
 # @functools.partial(jax.jit, static_argnums=(2,))
