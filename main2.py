@@ -9,7 +9,8 @@ import jax
 import jax.numpy as jnp
 import torch
 import sys
-from jax_simulator import Sim
+from array_sim import Sim
+# from jax_simulator import Sim
 from src.models.expert.classfier_cell_state import CellStateClassifier
 from src.models.expert.classfier_cell_state import torch_to_jax
 from src.techinical_noise import AddTechnicalNoiseJax
@@ -19,6 +20,8 @@ import experiment_buddy
 import wandb
 import seaborn as sns
 from jax.example_libraries import optimizers
+
+
 # from scipy.spatial import distance_matrix
 # from src.all_about_visualization import plot_heatmap_all_expressions
 
@@ -130,36 +133,29 @@ if __name__ == "__main__":
     #     interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.9
     # )
 
-
     sim = Sim(
         num_genes=tot_genes, num_cells_types=tot_cell_types,
         simulation_num_steps=params['NUM_SIM_CELLS'],
         interactions_filepath=interactions_filepath, regulators_filepath="data/Regs_cID_4.txt", noise_amplitude=0.9
     )
 
-    start = time.time()
+    start_time = time.time()
     adjacency, graph, layers = sim.build()
-    print(f"Took {time.time() - start:.3f} secs.")
+    print(f"compiling took {time.time() - start_time}")
 
-    # fig = plot_heatmap_all_expressions(
-    #     ds4_ground_truth_initial_dist.reshape(3, 100, 10000).mean(2).T,
-    #     layers[0],
-    #     show=False)
-    # buddy.run.log({"heatmap/expression/gd": wandb.Image(fig)}, step=0)
+    # create_plot_graph(graph, verbose=False, dataset_name=f"tmp.png")
 
-    # add_technical_noise = AddTechnicalNoiseJax(
-    #     dataset.tot_genes, dataset.tot_cell_types, params['NUM_SIM_CELLS'],
-    #     dataset.params_outliers_genes_noise, dataset.params_library_size_noise, dataset.params_dropout_noise
-    # )
-    if is_debugger_active():
-        with jax.disable_jit():
-            control(sim, 5, tot_cell_types, len(sim.layers[0]), classifier,
-                    writer=buddy,
-                    # add_technical_noise_function=add_technical_noise
-                    )
-    else:
-        num_episodes = 1
-        control(sim, num_episodes, tot_cell_types, len(sim.layers[0]), classifier,
-                writer=buddy,
-                # add_technical_noise_function=add_technical_noise
-                )
+    # if is_debugger_active():
+    #     with jax.disable_jit():
+    #         simulation_num_steps = 10
+    #         sim.simulation_num_steps = simulation_num_steps
+    #         x = sim.run_one_rollout()
+    # else:
+    #     x = sim.run_one_rollout(actions=1)
+
+    # start_time = time.time()
+    simulation_num_steps = 11
+    sim.simulation_num_steps = simulation_num_steps
+    x = sim.run_one_rollout()
+
+    print(f"simulation took {time.time() - start_time}")
