@@ -24,7 +24,7 @@ class config():
     data = "data/ds4_10k_each_type.npy"
     tensorboard = True
     num_genes = 7000
-    num_cell_types = 3
+    num_cell_types = 2
     lr = 1e-3
     epochs = 500
     batch_size = 128
@@ -37,7 +37,8 @@ writer = experiment_buddy.deploy(host='mila', disabled=True)
 
 
 def train(filepath_training_data, epochs=200):
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    # device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = 'cpu'
     print(f"Run on {device}")
 
     torch.manual_seed(1806)
@@ -47,12 +48,12 @@ def train(filepath_training_data, epochs=200):
     # writer = config.writer
 
     network = CellStateClassifier(num_genes=config.num_genes, num_cell_types=config.num_cell_types).to(device)
-    sgd = optim.SGD(network.parameters(), lr=config.lr, momentum=0.9)
+    sgd = optim.SGD(network.parameters(), lr=config.lr, momentum=0.9, weight_decay=1e-3)
     # criterium = nn.BCEWithLogitsLoss()
     criterium = nn.CrossEntropyLoss()
 
     # dataset = TranscriptomicsDataset(filepath_data=filepath_training_data, device=device)
-    dataset = RandomDataset(device, config.num_genes, 20, 2)
+    dataset = RandomDataset(device, config.num_genes, 10_000, 2)
     train_and_val_dataset = train_val_dataset(dataset, val_split=0.25)
     train_dataloader = DataLoader(train_and_val_dataset["train"], batch_size=config.batch_size, shuffle=True)
     val_dataloader = DataLoader(train_and_val_dataset["val"], batch_size=config.batch_size, shuffle=True)

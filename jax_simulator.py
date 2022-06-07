@@ -74,7 +74,6 @@ class Sim:
     def run_one_rollout(self, actions=None):
         """return the gene expression of shape [samples, genes]"""
         if actions is not None:
-            actions = jnp.array(np.random.rand(len(self.layers[0])))
             basal_production_rates = jnp.zeros((self.num_genes, self.num_cell_types))
             for action_gene, master_id in zip(actions, self.layers[0]):
                 basal_production_rates = basal_production_rates.at[master_id].set(action_gene)
@@ -152,27 +151,33 @@ class Sim:
         return x
 
     def simulate_master_layer(self, basal_production_rate, curr_genes_expression, layer, key):
-        subkeys = jax.random.split(key, len(layer))
-        dx = jax.vmap(euler_maruyama_master, in_axes=(0, 0, 0, 0, None, None))(
-            jnp.array([curr_genes_expression[gene] for gene in layer]),
-            basal_production_rate.take(jnp.array(layer)),
-            self.noise_parameters_genes.take(jnp.array(layer)),
-            subkeys,
-            self.simulation_num_steps,
-            self.dt
-        )
+        if self.simulation_num_steps > 1:
+            subkeys = jax.random.split(key, len(layer))
+            dx = jax.vmap(euler_maruyama_master, in_axes=(0, 0, 0, 0, None, None))(
+                jnp.array([curr_genes_expression[gene] for gene in layer]),
+                basal_production_rate.take(jnp.array(layer)),
+                self.noise_parameters_genes.take(jnp.array(layer)),
+                subkeys,
+                self.simulation_num_steps,
+                self.dt
+            )
+        else:
+            dx = jnp.zeros((len(layer), self.simulation_num_steps - 1))
         return dx
 
     def simulate_targets(self, production_rates, curr_genes_expression, layer, key):
-        subkeys = jax.random.split(key, len(layer))
-        dx = jax.vmap(euler_maruyama_targets, in_axes=(0, 0, 0, 0, None, None))(
-            jnp.array([curr_genes_expression[gene] for gene in layer]),
-            self.noise_parameters_genes.take(jnp.array(layer)),
-            production_rates,
-            subkeys,
-            self.simulation_num_steps,
-            self.dt
-        )
+        if self.simulation_num_steps == 1:
+            return jnp.zeros((len(layer), self.simulation_num_steps - 1))
+        else:
+            subkeys = jax.random.split(key, len(layer))
+            dx = jax.vmap(euler_maruyama_targets, in_axes=(0, 0, 0, 0, None, None))(
+                jnp.array([curr_genes_expression[gene] for gene in layer]),
+                self.noise_parameters_genes.take(jnp.array(layer)),
+                production_rates,
+                subkeys,
+                self.simulation_num_steps,
+                self.dt
+            )
         return dx
 
     # @functools.partial(jax.jit, static_argnums=(0, 1))
@@ -207,17 +212,16 @@ def euler_maruyama_master(curr_genes_expression, basal_production_rate, q, key, 
         curr_concentration = carry
         print("master compiling step...")
         decayed_production = jnp.multiply(0.8, curr_concentration)
-        dw_production, dw_decay = noises
+        # dw_production, dw_decay = noises
 
-        amplitude_d = q * jnp.power(decayed_production, 0.5)
-        amplitude_p = q * jnp.power(production_rates, 0.5)
+        # amplitude_d = q * jnp.power(decayed_production, 0.5)
+        # amplitude_p = q * jnp.power(production_rates, 0.5)
 
         decay = jnp.multiply(0.8, curr_concentration)
 
-        noise = jnp.multiply(amplitude_p, dw_production) + jnp.multiply(amplitude_d, dw_decay)
+        # noise = jnp.multiply(amplitude_p, dw_production) + jnp.multiply(amplitude_d, dw_decay)
 
-        next_gene_conc = curr_concentration + (dt * jnp.subtract(production_rates, decay)) + jnp.power(
-            dt, 0.5) * noise
+        next_gene_conc = curr_concentration + (dt * jnp.subtract(production_rates, decay))  # + jnp.power(dt, 0.5) * noise
 
         next_gene_conc = jax.nn.relu(next_gene_conc)
         # next_gene_conc = jax.nn.softplus(next_gene_conc)
@@ -241,10 +245,10 @@ def euler_maruyama_targets(curr_genes_expression, q, production_rates, key, simu
         print("target compiling step...")
         dw_d_t, dw_p_t, production_rate_t = state
         decay = jnp.multiply(0.8, curr_x)
-        amplitude_p = q * jnp.power(production_rate_t, 0.5)
-        amplitude_d = q * jnp.power(decay, 0.5)
-        noise = jnp.multiply(amplitude_p, dw_p_t) + jnp.multiply(amplitude_d, dw_d_t)
-        next_x = curr_x + (dt * jnp.subtract(production_rate_t, decay)) + jnp.power(dt, 0.5) * noise
+        # amplitude_p = q * jnp.power(production_rate_t, 0.5)
+        # amplitude_d = q * jnp.power(decay, 0.5)
+        # noise = jnp.multiply(amplitude_p, dw_p_t) + jnp.multiply(amplitude_d, dw_d_t)
+        next_x = curr_x + (dt * jnp.subtract(production_rate_t, decay))  # + jnp.power(dt, 0.5) * noise
         next_x = jax.nn.relu(next_x)
         # next_x = jax.nn.softplus(next_x)
         return next_x, next_x

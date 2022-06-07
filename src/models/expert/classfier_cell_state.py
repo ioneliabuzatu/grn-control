@@ -132,30 +132,12 @@ class CellStateClassifier(nn.Module):
         """
         super(CellStateClassifier, self).__init__()
 
-        self.fc1 = nn.Linear(num_genes, num_genes * 2)
-        self.fc2 = nn.Linear(num_genes * 2, num_genes * 3)
-        self.fcx = nn.Linear(num_genes * 3, num_genes // 2)
-
-        if num_cell_types == 2:
-            self.fc3 = nn.Linear(num_genes // 2, 1)
-        else:
-            self.fc3 = nn.Linear(num_genes // 2, num_cell_types)
+        self.fc1 = nn.Linear(num_genes, num_cell_types)
 
         torch.nn.init.xavier_uniform_(self.fc1.weight)
-        torch.nn.init.xavier_uniform_(self.fc2.weight)
-        torch.nn.init.xavier_uniform_(self.fc3.weight)
         self.fc1.bias.data.fill_(0.01)
-        self.fc2.bias.data.fill_(0.01)
-        self.fcx.bias.data.fill_(0.01)
-        # self.fc3.bias.data.fill_(0.01)
         self.classifier = nn.Sequential(
             self.fc1,
-            nn.SELU(),
-            self.fc2,
-            nn.SELU(),
-            self.fcx,
-            nn.SELU(),
-            self.fc3
         )
 
     def forward(self, x):
@@ -189,7 +171,7 @@ class TranscriptomicsDataset(Dataset):
 
     def __getitem__(self, idx):
         # data = self.data[idx, :-1]
-        data = self.data[idx] # indices_to_set_to_zero = np.random.permutation(self.num_genes_to_zero_for_batch_sgd)
+        data = self.data[idx]  # indices_to_set_to_zero = np.random.permutation(self.num_genes_to_zero_for_batch_sgd)
         # data = data[indices_to_set_to_zero]
         # data[indices_to_set_to_zero] = 0.0
         x = torch.tensor(data, dtype=torch.float32)
@@ -222,7 +204,7 @@ class RandomDataset(Dataset):
         self.labels_encoding is ["2weeks_after_crush", "contro"] so `label 0` is disease and `label 1` is control.
         """
         self.device = device
-        self.data = np.random.random((num_samples*num_classes, num_genes))
+        self.data = np.random.random((num_samples * num_classes, num_genes))
         # self.num_genes_to_zero_for_batch_sgd = (self.data.shape[1] - num_genes_for_batch_sgd) - 1
         # self.num_genes_to_take_for_batch_sgd = num_genes_for_batch_sgd
         print(f"data input has size: {self.data.shape}")
@@ -238,7 +220,7 @@ class RandomDataset(Dataset):
 
     def __getitem__(self, idx):
         # data = self.data[idx, :-1]
-        data = self.data[idx] # indices_to_set_to_zero = np.random.permutation(self.num_genes_to_zero_for_batch_sgd)
+        data = self.data[idx]  # indices_to_set_to_zero = np.random.permutation(self.num_genes_to_zero_for_batch_sgd)
         # data = data[indices_to_set_to_zero]
         # data[indices_to_set_to_zero] = 0.0
         x = torch.tensor(data, dtype=torch.float32)
@@ -259,22 +241,22 @@ def train_val_dataset(dataset, val_split=0.25):
 def torch_to_jax(model=None):
     import jax.experimental.stax as stax
     import jax.random
-    if model is None:
-        model = CellStateClassifier(100)
+    # if model is None:
+    #     model = CellStateClassifier(100)
     init_fn, predict_fn = stax.serial(
         stax.Dense(model.fc1.out_features, lambda *_: model.fc1.weight.detach().numpy().T,
                    lambda *_: model.fc1.bias.detach().numpy()),
-        stax.Selu,
-        stax.Dense(model.fc2.out_features, lambda *_: model.fc2.weight.detach().numpy().T,
-                   lambda *_: model.fc2.bias.detach().numpy()),
+        # stax.Selu,
+        # stax.Dense(model.fc2.out_features, lambda *_: model.fc2.weight.detach().numpy().T,
+        #            lambda *_: model.fc2.bias.detach().numpy()),
 
-        stax.Selu,
-        stax.Dense(model.fcx.out_features, lambda *_: model.fcx.weight.detach().numpy().T,
-                   lambda *_: model.fcx.bias.detach().numpy()),
+        # stax.Selu,
+        # stax.Dense(model.fcx.out_features, lambda *_: model.fcx.weight.detach().numpy().T,
+        #            lambda *_: model.fcx.bias.detach().numpy()),
 
-        stax.Selu,
-        stax.Dense(model.fc3.out_features, lambda *_: model.fc3.weight.detach().numpy().T,
-                   lambda *_: model.fc3.bias.detach().numpy()),
+        # stax.Selu,
+        # stax.Dense(model.fc3.out_features, lambda *_: model.fc3.weight.detach().numpy().T,
+        #            lambda *_: model.fc3.bias.detach().numpy()),
     )
     rng_key = jax.random.PRNGKey(0)
     _, params = init_fn(rng_key, (model.fc1.in_features,))

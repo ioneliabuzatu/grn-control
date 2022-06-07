@@ -19,6 +19,8 @@ import experiment_buddy
 import wandb
 import seaborn as sns
 from jax.example_libraries import optimizers
+
+
 # from scipy.spatial import distance_matrix
 # from src.all_about_visualization import plot_heatmap_all_expressions
 
@@ -61,7 +63,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 
         return loss, expression
 
-    opt_init, opt_update, get_params = optimizers.adam(step_size=0.005)
+    opt_init, opt_update, get_params = optimizers.adam(step_size=0.0005)
     opt_state = opt_init(jnp.ones(shape=(num_master_genes, num_cell_types)))
 
     check_expressions_for_convergence = []
@@ -106,7 +108,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 if __name__ == "__main__":
     # ds4_ground_truth_initial_dist = np.load("data/ds4_10k_each_type.npy")
 
-    params = {'num_genes': '', 'NUM_SIM_CELLS': 200}
+    params = {'num_genes': '', 'NUM_SIM_CELLS': 2}
     experiment_buddy.register_defaults(params)
     buddy = experiment_buddy.deploy(host="", disabled=True)
 
@@ -129,7 +131,6 @@ if __name__ == "__main__":
     #     simulation_num_steps=params['NUM_SIM_CELLS'],
     #     interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.9
     # )
-
 
     sim = Sim(
         num_genes=tot_genes, num_cells_types=tot_cell_types,
