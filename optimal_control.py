@@ -3,6 +3,9 @@ import time
 import experiment_buddy
 import jax
 import jax.numpy as jnp
+import numpy as np
+import torch
+import wandb
 from jax.example_libraries import optimizers
 
 from jax_simulator import Sim
@@ -33,15 +36,16 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
             writer=None, add_technical_noise_function=None):
     @jax.jit
     def loss_exp(actions):
-        # trajectory = env.run_one_rollout(actions)
-        # trajectory = jnp.stack(tuple([trajectory[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
+        trajectory = env.run_one_rollout(actions)
+        trajectory = jnp.stack(tuple([trajectory[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
 
-        # last_state = trajectory[-1].T  # cell type is batch
+        last_state = trajectory[-1].T  # cell type is batch
 
         # output_classifier = expert(jnp.log(1 + last_state))
         # last_state = actions.repeat(env.num_cell_types, axis=0).repeat(53, axis=1)
-        last_state = actions.repeat(1, axis=0).repeat(53, axis=1)
+        # last_state = actions.repeat(1, axis=0).repeat(53, axis=1)
         output_classifier = expert(last_state)
+        # output_classifier = output_classifier[1 - target_class, :].reshape(1, -1)  # Only control one cell type for now
         # output_classifier = actions
 
         # gain = cross_entropy(output_classifier, 1)
@@ -78,24 +82,27 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
         probs = jax.nn.softmax(logits, axis=1)
 
         target_class_mean_prob = jnp.mean(probs[:, target_class])
+        offtarget_class_mean_prob = jnp.mean(probs[:, 1 - target_class])
 
-        # logits = last_state
-        print("gain", gain, target_class_mean_prob)
-        # print("ctypes", logits.argmax(axis=1))
-        # print("ctypes-target:", logits[:, 0])
-        # print("ctypes-other:", logits[:, 1])
-        # print(f"grad: {grad}")
-        writer.run.log({"metrics/gain": gain}, step=episode)
-        writer.run.log({"metrics/target_class_mean_prob": target_class_mean_prob}, step=episode)
-        writer.run.log({"metrics/grads": grad.mean()}, step=episode)
+        if episode % 10 == 0:
+            # logits = last_state
+            print("gain", gain, target_class_mean_prob)
+            # print("ctypes", logits.argmax(axis=1))
+            # print("ctypes-target:", logits[:, 0])
+            # print("ctypes-other:", logits[:, 1])
+            # print(f"grad: {grad}")
+            writer.run.log({"metrics/gain": gain}, step=episode)
+            writer.run.log({"metrics/target_class_mean_prob": target_class_mean_prob}, step=episode)
+            writer.run.log({"metrics/offtarget_class_mean_prob": offtarget_class_mean_prob}, step=episode)
+            writer.run.log({"metrics/grads": grad.mean()}, step=episode)
 
-        writer.run.log({"logits/argmax(axis=1).mean()": logits.argmax(axis=1).mean()}, step=episode)
+            writer.run.log({"logits/argmax(axis=1).mean()": logits.argmax(axis=1).mean()}, step=episode)
 
-        writer.run.log({"logits/target_class.mean()": logits[:, target_class].mean()}, step=episode)
-        writer.run.log({"logits/not_target_class.mean()": logits[:, 1 - target_class].mean()}, step=episode)
+            writer.run.log({"logits/target_class.mean()": logits[:, target_class].mean()}, step=episode)
+            writer.run.log({"logits/not_target_class.mean()": logits[:, 1 - target_class].mean()}, step=episode)
 
-        writer.run.log({f"p/target.mean()": probs[:, target_class].mean()}, step=episode)
-        writer.run.log({f"p/not_target.mean()": probs[:, 1 - target_class].mean()}, step=episode)
+            writer.run.log({f"p/target": wandb.Histogram(probs[:, target_class])}, step=episode)
+            writer.run.log({f"p/not_target": wandb.Histogram(probs[:, 1 - target_class])}, step=episode)
 
     print(f"policy gradient simulation control took {round(time.time() - start)} secs.")
 
@@ -125,6 +132,9 @@ if __name__ == "__main__":
 
     # expert_checkpoint_filepath = "src/models/expert/expert_106G_norm_scanpy.pth"
     # expert_checkpoint_filepath = "src/models/expert/checkpoints/delete_me.pth"
+    torch.manual_seed(0)
+    torch.cuda.manual_seed_all(0)
+    np.random.seed(0)
     classifier = CellStateClassifier(num_genes=tot_genes, num_cell_types=tot_cell_types).to("cpu")
     # loaded_checkpoint = torch.load(expert_checkpoint_filepath, map_location=lambda storage, loc: storage)
     # classifier.load_state_dict(loaded_checkpoint)
