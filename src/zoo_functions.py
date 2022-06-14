@@ -42,6 +42,10 @@ def plot_three_genes(genes: list, hlines=None, xmax=1500, title=""):
     axes[1].set_title('A gene from layer 1')
     axes[2].set_title('A gene from layer 2')
 
+    axes[0].set_ylim(ymin=0)
+    axes[1].set_ylim(ymin=0)
+    axes[2].set_ylim(ymin=0)
+
     if hlines is not None:
         axes[0].hlines(y=hlines[0], xmin=0, xmax=xmax, linewidth=2, color='r')
         axes[1].hlines(y=hlines[1], xmin=0, xmax=xmax, linewidth=2, color='r')
