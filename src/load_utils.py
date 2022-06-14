@@ -35,8 +35,7 @@ def load_grn_jax(interactions_filename, adjacency):
         for row in csv.reader(f, delimiter=','):
             target_node_id, num_regulators = int(float(row.pop(0))), int(float(row.pop(0)))
             regulators_nodes_ids = [int(float(row.pop(0))) for x in range(num_regulators)]
-            contributions = [float(float(row.pop(0))) for x in range(num_regulators)]
-            contributions = [c / abs(c) for c in contributions]
+            contributions = [float(row.pop(0)) for x in range(num_regulators)]
             # coop_state = [float(row.pop(0)) for x in range(num_regulators)]  # TODO add it
 
             # adjacency = adjacency.at[regulators_nodes_ids, target_node_id].set(contributions)
@@ -50,7 +49,7 @@ def load_grn_jax(interactions_filename, adjacency):
     return adjacency, topo_sort_graph
 
 
-def topo_sort_graph_layers(graph: nx.DiGraph) -> typing.Tuple[np.ndarray, ...]:  # TODO this was changed to tuple xd,
+def topo_sort_graph_layers(graph: nx.DiGraph) -> typing.Tuple[np.ndarray, ...]: # TODO this was changed to tuple xd,
     # rever back to list
     layers = tuple(tuple(l) for l in nx.topological_generations(graph))
     return layers

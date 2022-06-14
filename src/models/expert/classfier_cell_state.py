@@ -1,4 +1,6 @@
 import numpy as np
+import jax.experimental.stax as stax
+import jax.random
 import torch
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import normalize
@@ -10,18 +12,14 @@ from torch.utils.data import Subset
 
 
 @torch.no_grad()
-def evaluate(network: nn.Module, data: DataLoader, metric) -> list:
+def evaluate(network: nn.Module, data: DataLoader, metric, use_bce_loss=False) -> list:
     network.eval()
     device = next(network.parameters()).device
 
     errors = []
     for x, y in data:
-        x, y = x.to(device), y.to(device)
-        logits = network(x)
-        # if logits.dim != y.dim:
-        #     y = y.unsqueeze(1)
-        # errors.append(metric(logits, y).item())
-        errors.append(metric(logits, y.long()).item())
+        logits = network(x.to(device))
+        errors.append(metric(logits, y.long().to(device)).item())
 
     return errors
 
@@ -32,20 +30,21 @@ def update(network: nn.Module, data: DataLoader, loss: nn.Module,
     network.train()
     device = next(network.parameters()).device
 
+    # sensitivity analysis
+    # x.requires_grad = True
+    # logits = network(x)
+    # logits.abs().sum().backward()
+    # print("Sensitivity:", x.grad.abs().mean(0))
+    # x.requires_grad = False
+
     errs = []
     for x, y in data:
-        x, y = x.to(device), y.to(device)
-
         opt.zero_grad()
-
+        x = x.to(device)
         logits = network(x)
-        # if logits.dim != y.dim:
-        #     y = y.unsqueeze(1)
-
-        # err = loss(logits, y)
-        err = loss(logits, y.long())
+        err = loss(logits, y.long().to(device))
+        # print(nn.Sigmoid()(logits.detach().cpu()), y)
         errs.append(err.item())
-
         err.backward()
         opt.step()
 
@@ -132,12 +131,16 @@ class CellStateClassifier(nn.Module):
         """
         super(CellStateClassifier, self).__init__()
 
-        self.fc1 = nn.Linear(num_genes, num_cell_types)
-
-        torch.nn.init.xavier_uniform_(self.fc1.weight)
-        self.fc1.bias.data.fill_(0.01)
+        self.fc1 = nn.Linear(num_genes, num_genes // 2)
+        self.fc2 = nn.Linear(num_genes // 2, num_cell_types)
         self.classifier = nn.Sequential(
             self.fc1,
+            nn.SELU(),
+            self.fc2,
+            # nn.SELU(),
+            # self.fcx,
+            # nn.SELU(),
+            # self.fc3
         )
 
     def forward(self, x):
@@ -246,9 +249,9 @@ def torch_to_jax(model=None):
     init_fn, predict_fn = stax.serial(
         stax.Dense(model.fc1.out_features, lambda *_: model.fc1.weight.detach().numpy().T,
                    lambda *_: model.fc1.bias.detach().numpy()),
-        # stax.Selu,
-        # stax.Dense(model.fc2.out_features, lambda *_: model.fc2.weight.detach().numpy().T,
-        #            lambda *_: model.fc2.bias.detach().numpy()),
+        stax.Selu,
+        stax.Dense(model.fc2.out_features, lambda *_: model.fc2.weight.detach().numpy().T,
+                   lambda *_: model.fc2.bias.detach().numpy()),
 
         # stax.Selu,
         # stax.Dense(model.fcx.out_features, lambda *_: model.fcx.weight.detach().numpy().T,
@@ -258,6 +261,41 @@ def torch_to_jax(model=None):
         # stax.Dense(model.fc3.out_features, lambda *_: model.fc3.weight.detach().numpy().T,
         #            lambda *_: model.fc3.bias.detach().numpy()),
     )
+    rng_key = jax.random.PRNGKey(0)
+    _, params = init_fn(rng_key, (model.fc1.in_features,))
+
+    def jax_model(x):
+        return predict_fn(params, x)
+
+    return jax_model
+
+
+def torch_to_jax_resnet(model=None):
+    import jax.experimental.stax as stax
+    import jax.random
+    block1 = stax.serial(
+        stax.Dense(model.fc1.out_features, lambda *_: model.fc1.weight.detach().numpy().T,
+                   lambda *_: model.fc1.bias.detach().numpy()),
+        stax.Selu, ),
+    block2 = stax.serial(stax.Dense(model.fc2.out_features, lambda *_: model.fc2.weight.detach().numpy().T,
+                                    lambda *_: model.fc2.bias.detach().numpy()), stax.Selu, ),
+    block3 = stax.serial(
+        stax.Dense(model.fcx.out_features, lambda *_: model.fcx.weight.detach().numpy().T,
+                   lambda *_: model.fcx.bias.detach().numpy()),
+        stax.Selu,
+    )
+    block4 = stax.serial(
+        stax.Dense(model.fc3.out_features, lambda *_: model.fc3.weight.detach().numpy().T,
+                   lambda *_: model.fc3.bias.detach().numpy()),
+    )
+
+    init_fn, predict_fn = stax.serial(
+        stax.parallel(block1, stax.Identity),
+        stax.parallel(block2, stax.Identity),
+        stax.parallel(block3, stax.Identity),
+        block4,
+    )
+
     rng_key = jax.random.PRNGKey(0)
     _, params = init_fn(rng_key, (model.fc1.in_features,))
 
