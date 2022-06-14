@@ -1,5 +1,4 @@
 import csv
-import math
 import typing
 from itertools import repeat
 
@@ -44,13 +43,10 @@ def load_grn_jax(interactions_filename, adjacency):
             topo_sort_graph.add_weighted_edges_from(
                 zip(regulators_nodes_ids, repeat(target_node_id), contributions)
             )
-    # adjacency[adjacency>0] = 1
-    # adjacency[adjacency<0] = -1
     return adjacency, topo_sort_graph
 
 
-def topo_sort_graph_layers(graph: nx.DiGraph) -> typing.Tuple[np.ndarray, ...]: # TODO this was changed to tuple xd,
-    # rever back to list
+def topo_sort_graph_layers(graph: nx.DiGraph) -> typing.Tuple[typing.Tuple, ...]:
     layers = tuple(tuple(l) for l in nx.topological_generations(graph))
     return layers
 

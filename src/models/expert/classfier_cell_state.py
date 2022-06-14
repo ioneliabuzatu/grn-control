@@ -81,22 +81,10 @@ def accuracy(logits, targets):
 
 
 @torch.no_grad()
-def binary_acc(logits, targets):
-    if logits.dim != targets.dim:
-        targets = targets.unsqueeze(1)
-
-    y_pred_tag = torch.round(torch.sigmoid(logits))
-
-    correct_results_sum = (y_pred_tag == targets).sum().float()
-    acc = correct_results_sum / targets.shape[0]
-    acc = torch.round(acc * 100)
-    return acc.item()
-
-
-@torch.no_grad()
 def multiclass_acc(logits, targets):
     probs = torch.softmax(logits, dim=1)
     winners = probs.argmax(dim=1)
+    # _sums_probs = probs.sum(dim=1)
     corrects = (winners == targets)
     accuracy = corrects.sum().float() / float(targets.size(0))
     return accuracy.item()
@@ -110,13 +98,45 @@ def get_accuracy(network, dataloader):
     for batch_idx, (inputs, targets) in enumerate(dataloader):
         inputs = inputs.to(device)
         targets = targets.to(device)
-
         logits = network(inputs)
-        # accuracy_mini_batch = binary_acc(logits, targets)
         accuracy_mini_batch = multiclass_acc(logits, targets)
         accuracies.append(accuracy_mini_batch)
 
     return accuracies
+
+
+class MiniCellStateClassifier(nn.Module):
+    """ Classifier network for classifying cell state {healthy, unhealthy} """
+
+    def __init__(self, num_genes: int, num_cell_types):
+        """
+        Parameters
+        ----------
+        num_classes : int
+            The number of output classes in the data.
+        """
+        super(MiniCellStateClassifier, self).__init__()
+
+        self.fc1 = nn.Linear(num_genes, num_genes//2)
+        # self.fc1 = nn.Linear(num_genes, num_cell_types)
+        self.fc2 = nn.Linear(num_genes//2, num_cell_types)
+        self.dropout = nn.Dropout(p=0.5)
+
+        torch.nn.init.xavier_uniform_(self.fc1.weight)
+        torch.nn.init.xavier_uniform_(self.fc2.weight)
+        self.fc1.bias.data.fill_(0.01)
+        self.fc2.bias.data.fill_(0.01)
+
+        self.classifier = nn.Sequential(
+            self.fc1,
+            nn.SELU(),
+            # self.dropout,
+            self.fc2
+        )
+
+    def forward(self, x):
+        x = self.classifier(x)
+        return x
 
 
 class CellStateClassifier(nn.Module):
@@ -131,16 +151,27 @@ class CellStateClassifier(nn.Module):
         """
         super(CellStateClassifier, self).__init__()
 
-        self.fc1 = nn.Linear(num_genes, num_genes // 2)
-        self.fc2 = nn.Linear(num_genes // 2, num_cell_types)
+        self.fc1 = nn.Linear(num_genes, num_genes * 2)
+        self.fc2 = nn.Linear(num_genes * 2, num_genes * 3)
+        self.fcx = nn.Linear(num_genes * 3, num_genes // 2)
+
+        self.fc3 = nn.Linear(num_genes // 2, num_cell_types)
+
+        torch.nn.init.xavier_uniform_(self.fc1.weight)
+        torch.nn.init.xavier_uniform_(self.fc2.weight)
+        torch.nn.init.xavier_uniform_(self.fc3.weight)
+        self.fc1.bias.data.fill_(0.01)
+        self.fc2.bias.data.fill_(0.01)
+        self.fcx.bias.data.fill_(0.01)
+        self.fc3.bias.data.fill_(0.01)
         self.classifier = nn.Sequential(
             self.fc1,
             nn.SELU(),
             self.fc2,
-            # nn.SELU(),
-            # self.fcx,
-            # nn.SELU(),
-            # self.fc3
+            nn.SELU(),
+            self.fcx,
+            nn.SELU(),
+            self.fc3
         )
 
     def forward(self, x):
@@ -149,7 +180,7 @@ class CellStateClassifier(nn.Module):
 
 
 class TranscriptomicsDataset(Dataset):
-    def __init__(self, filepath_data, device, normalize_by_max=True, num_genes_for_batch_sgd=5000):
+    def __init__(self, filepath_data, device, normalize_by_max=True, num_genes_for_batch_sgd=5000, seed=42):
         """
         :param filepath_data: stacked npy file with first rows genes names and last column the labels.
         :param device:
@@ -158,28 +189,24 @@ class TranscriptomicsDataset(Dataset):
 
         self.labels_encoding is ["2weeks_after_crush", "contro"] so `label 0` is disease and `label 1` is control.
         """
+        np.random.seed(seed)
         self.normalize_data = normalize_by_max
         self.device = device
         self.data = np.load(filepath_data, allow_pickle=True)
-        self.num_genes_to_zero_for_batch_sgd = (self.data.shape[1] - num_genes_for_batch_sgd) - 1
-        self.num_genes_to_take_for_batch_sgd = num_genes_for_batch_sgd
         print(f"data input has size: {self.data.shape}")
         if isinstance(self.data[0, 0], str):
             self.genes_names = self.data[0, :]
             self.data = self.data[1:, :]
         self.preprocess_data()
-        # self.labels_encoding, self.labels_categorical = np.unique(self.data[:, -1], return_inverse=True)
-        self.labels_encoding, self.labels_categorical = np.unique(
-            np.concatenate([np.array([str(x)] * 10000, dtype=object) for x in range(9)], axis=0), return_inverse=True)
+        self.labels_encoding, self.labels_categorical = np.unique(self.data[:, -1], return_inverse=True)
+        # self.labels_encoding, self.labels_categorical = np.unique(
+        #     np.concatenate([np.array([str(x)] * 10000, dtype=object) for x in range(9)], axis=0), return_inverse=True)
 
     def __getitem__(self, idx):
-        # data = self.data[idx, :-1]
-        data = self.data[idx]  # indices_to_set_to_zero = np.random.permutation(self.num_genes_to_zero_for_batch_sgd)
-        # data = data[indices_to_set_to_zero]
-        # data[indices_to_set_to_zero] = 0.0
-        x = torch.tensor(data, dtype=torch.float32)
+        x = torch.tensor(self.data[idx, :-1], dtype=torch.float32)
+        # y = torch.tensor(self.data[idx, -1], dtype=torch.long)
+        # data = self.data[idx] # indices_to_set_to_zero = np.random.permutation(self.num_genes_to_zero_for_batch_sgd)
         y = torch.from_numpy(np.array(self.labels_categorical[idx], dtype=np.float32))
-        del data
         return x, y
 
     def __len__(self):
@@ -192,8 +219,9 @@ class TranscriptomicsDataset(Dataset):
         """
         # x_normed = data / data.max(axis=1)
         if self.normalize_data:
-            # self.data[1:, :-1] = normalize(self.data[1:, :-1], axis=1, norm="max")
-            self.data = normalize(self.data, axis=1, norm="max")
+            self.data[:, :-1], norm = normalize(self.data[:, :-1], axis=1, norm="max", return_norm=True)
+            print(f"data normalized by max: {norm}")
+            # self.data = normalize(self.data, axis=1, norm="max")
 
 
 class RandomDataset(Dataset):
@@ -241,60 +269,34 @@ def train_val_dataset(dataset, val_split=0.25):
     return datasets
 
 
-def torch_to_jax(model=None):
-    import jax.experimental.stax as stax
-    import jax.random
-    # if model is None:
-    #     model = CellStateClassifier(100)
-    init_fn, predict_fn = stax.serial(
-        stax.Dense(model.fc1.out_features, lambda *_: model.fc1.weight.detach().numpy().T,
-                   lambda *_: model.fc1.bias.detach().numpy()),
-        stax.Selu,
-        stax.Dense(model.fc2.out_features, lambda *_: model.fc2.weight.detach().numpy().T,
-                   lambda *_: model.fc2.bias.detach().numpy()),
+def torch_to_jax(model=None, use_simple_model=False):
+    if model is None:
+        model = CellStateClassifier(100)
 
-        # stax.Selu,
-        # stax.Dense(model.fcx.out_features, lambda *_: model.fcx.weight.detach().numpy().T,
-        #            lambda *_: model.fcx.bias.detach().numpy()),
+    if use_simple_model:
+        init_fn, predict_fn = stax.serial(
+            stax.Dense(model.fc1.out_features, lambda *_: model.fc1.weight.detach().numpy().T,
+                       lambda *_: model.fc1.bias.detach().numpy()),
+            stax.Selu,
+            stax.Dense(model.fc2.out_features, lambda *_: model.fc2.weight.detach().numpy().T,
+                       lambda *_: model.fc2.bias.detach().numpy()),
+        )
+    else:
+        init_fn, predict_fn = stax.serial(
+            stax.Dense(model.fc1.out_features, lambda *_: model.fc1.weight.detach().numpy().T,
+                       lambda *_: model.fc1.bias.detach().numpy()),
+            stax.Selu,
+            stax.Dense(model.fc2.out_features, lambda *_: model.fc2.weight.detach().numpy().T,
+                       lambda *_: model.fc2.bias.detach().numpy()),
 
-        # stax.Selu,
-        # stax.Dense(model.fc3.out_features, lambda *_: model.fc3.weight.detach().numpy().T,
-        #            lambda *_: model.fc3.bias.detach().numpy()),
-    )
-    rng_key = jax.random.PRNGKey(0)
-    _, params = init_fn(rng_key, (model.fc1.in_features,))
+            stax.Selu,
+            stax.Dense(model.fcx.out_features, lambda *_: model.fcx.weight.detach().numpy().T,
+                       lambda *_: model.fcx.bias.detach().numpy()),
 
-    def jax_model(x):
-        return predict_fn(params, x)
-
-    return jax_model
-
-
-def torch_to_jax_resnet(model=None):
-    import jax.experimental.stax as stax
-    import jax.random
-    block1 = stax.serial(
-        stax.Dense(model.fc1.out_features, lambda *_: model.fc1.weight.detach().numpy().T,
-                   lambda *_: model.fc1.bias.detach().numpy()),
-        stax.Selu, ),
-    block2 = stax.serial(stax.Dense(model.fc2.out_features, lambda *_: model.fc2.weight.detach().numpy().T,
-                                    lambda *_: model.fc2.bias.detach().numpy()), stax.Selu, ),
-    block3 = stax.serial(
-        stax.Dense(model.fcx.out_features, lambda *_: model.fcx.weight.detach().numpy().T,
-                   lambda *_: model.fcx.bias.detach().numpy()),
-        stax.Selu,
-    )
-    block4 = stax.serial(
-        stax.Dense(model.fc3.out_features, lambda *_: model.fc3.weight.detach().numpy().T,
-                   lambda *_: model.fc3.bias.detach().numpy()),
-    )
-
-    init_fn, predict_fn = stax.serial(
-        stax.parallel(block1, stax.Identity),
-        stax.parallel(block2, stax.Identity),
-        stax.parallel(block3, stax.Identity),
-        block4,
-    )
+            stax.Selu,
+            stax.Dense(model.fc3.out_features, lambda *_: model.fc3.weight.detach().numpy().T,
+                       lambda *_: model.fc3.bias.detach().numpy()),
+        )
 
     rng_key = jax.random.PRNGKey(0)
     _, params = init_fn(rng_key, (model.fc1.in_features,))
