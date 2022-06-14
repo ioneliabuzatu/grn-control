@@ -27,6 +27,7 @@ from jax.example_libraries import optimizers
 # jax.config.update('jax_platform_name', 'cpu')
 
 np.set_printoptions(suppress=True)
+target_class = 0
 
 
 def cross_entropy(logprobs, target_to_steer):
@@ -59,6 +60,9 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 
         last_state = trajectory[-1].T  # cell type is batch
         output_classifier = expert(last_state / mean_K)
+        # TODO: make the sum, max over the non target logits
+        # TODO: afterwards, replace max with logsumexp to make it smooth
+
         gain = 2 * jnp.mean(output_classifier[:, target_class]) - jnp.mean(jnp.sum(output_classifier, axis=1), axis=0)
         return gain, last_state
 
