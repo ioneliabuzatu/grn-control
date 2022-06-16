@@ -10,7 +10,7 @@ import jax.numpy as jnp
 import torch
 import sys
 from jax_simulator import Sim
-from src.models.expert.classfier_cell_state import CellStateClassifier
+from src.models.expert.classfier_cell_state import MiniCellStateClassifier as CellStateClassifier
 from src.models.expert.classfier_cell_state import torch_to_jax
 from src.techinical_noise import AddTechnicalNoiseJax
 from src.zoo_functions import is_debugger_active
@@ -19,7 +19,6 @@ import experiment_buddy
 import wandb
 import seaborn as sns
 from jax.example_libraries import optimizers
-
 
 # from scipy.spatial import distance_matrix
 # from src.all_about_visualization import plot_heatmap_all_expressions
@@ -41,7 +40,7 @@ def cross_entropy(logprobs, target_to_steer):
     @desired_target: the target class, can be int or the one-hot encoding is chosen to use softmax
     """
     # print("logprobs",logprobs.primal)
-    print("argmax",logprobs.argmax(1))
+    print("argmax", logprobs.argmax(1))
     # logprobs2 = logprobs - jnp.max(logprobs, axis=1, keepdims=True)
     cs = 2 * jnp.mean(logprobs[:, target_to_steer]) - jnp.mean(logprobs)
     print("=========> logprobs", logprobs.primal[:, target_to_steer])
@@ -56,74 +55,31 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 
     @jax.jit
     def loss_exp(actions):
-        trajectory = env.run_one_rollout(actions * mean_K) 
+        trajectory = env.run_one_rollout(actions * mean_K)
         trajectory = jnp.stack(tuple([trajectory[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
-  
+
         # if add_technical_noise_function is not None:
-          #   all_expr_stack_by_type = add_technical_noise_function.get_noisy_technical_concentration(expression.T).T
+        #   all_expr_stack_by_type = add_technical_noise_function.get_noisy_technical_concentration(expression.T).T
         # else:
-          #   all_expr_stack_by_type = jnp.vstack([expression[:, :, i] for i in range(expression.shape[2])])
-            
+        #   all_expr_stack_by_type = jnp.vstack([expression[:, :, i] for i in range(expression.shape[2])])
+
         last_state = trajectory[-1].T  # cell type is batch
         output_classifier = expert(last_state / mean_K)
-        
+
         # TODO: make the sum, max over the non target logits
         # TODO: afterwards, replace max with logsumexp to make it smooth
         gain = 2 * jnp.mean(output_classifier[:, target_class]) - jnp.mean(jnp.sum(output_classifier, axis=1), axis=0)
         return gain, last_state
-      
 
     def update(episode, opt_state_, check_expressions_for_convergence):
         actions = get_params(opt_state_)
         # print("actions going in value_and_grad", actions)
         (gain, last_state), grad = jax.value_and_grad(loss_exp, has_aux=True)(actions)
-      
+
         # print("grad before clipping", grad)
         grad = jnp.clip(grad, -1, 1)
-        print("loss", loss)
-        # print(f"grad shape: {grad.shape} \n grad: {grad}")
-
-        # writer.run.log({"loss": loss}, step=episode)
-        # writer.run.log({"grads": wandb.Image(sns.heatmap(grad, linewidth=0.5))}, step=episode)
-        # plt.close()
-        # writer.run.log({"actions": wandb.Image(sns.heatmap(actions, linewidth=0.5))}, step=episode)
-        # plt.close()
-        # fig = plt.figure(figsize=(10, 7))
-        # plt.plot(jnp.mean(jnp.array(expression), axis=0))
-        # writer.run.log({"control/mean": wandb.Image(fig)}, step=episode)
-        # plt.close()
-
-        # check_expressions_for_convergence.append(expression)
-        # if len(check_expressions_for_convergence) == 3:
-        #     expression = jnp.array(check_expressions_for_convergence)
-        #     last_x_points = expression[:, -20]
-        #     mean_x_points = jnp.mean(last_x_points, axis=0)
-        #     var_mean_x_points = jnp.var(last_x_points - mean_x_points, axis=0)
-        #     print((var_mean_x_points < 0.1).sum())
-        #     check_expressions_for_convergence = []
-
-        return opt_update(episode, grad, opt_state_), check_expressions_for_convergence
-
-
-        # writer.run.log({"loss": loss}, step=episode)
-        # writer.run.log({"grads": wandb.Image(sns.heatmap(grad, linewidth=0.5))}, step=episode)
-        # plt.close()
-        # writer.run.log({"actions": wandb.Image(sns.heatmap(actions, linewidth=0.5))}, step=episode)
-        # plt.close()
-        # fig = plt.figure(figsize=(10, 7))
-        # plt.plot(jnp.mean(jnp.array(expression), axis=0))
-        # writer.run.log({"control/mean": wandb.Image(fig)}, step=episode)
-        # plt.close()
-
-        # check_expressions_for_convergence.append(expression)
-        # if len(check_expressions_for_convergence) == 3:
-        #     expression = jnp.array(check_expressions_for_convergence)
-        #     last_x_points = expression[:, -20]
-        #     mean_x_points = jnp.mean(last_x_points, axis=0)
-        #     var_mean_x_points = jnp.var(last_x_points - mean_x_points, axis=0)
-        #     print((var_mean_x_points < 0.1).sum())
-        #     check_expressions_for_convergence = []
-
+        print("gain", gain)
+        print(f"grad shape: {grad.shape} \n grad: {grad}")
         return opt_update(episode, -grad, opt_state_), check_expressions_for_convergence, gain, grad, last_state
 
     start = time.time()
@@ -138,7 +94,8 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 
     for episode in range(num_episodes):
         print("Episode#", episode)
-        opt_state, check_expressions_for_convergence, gain, grad, last_state = update(episode, opt_state, check_expressions_for_convergence)  # opt_state are the actions
+        opt_state, check_expressions_for_convergence, gain, grad, last_state = update(
+            episode, opt_state, check_expressions_for_convergence)  # opt_state are the actions
         logits = expert(last_state)
         probs = jax.nn.softmax(logits, axis=1)
 
@@ -173,24 +130,39 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 
 
 if __name__ == "__main__":
+    import getpass
+    from pathlib import Path
+    whoami = getpass.getuser()
+    home = str(Path.home())
+    print("home:", home)
+    if whoami == 'ionelia':
+        repo_path = f"{home}/pycharm-projects/grn-control"
+        expert_checkpoint = f"{repo_path}/data/GEO/GSE122662/graph-experiments/expert_28_genes_2_layer.pth"
+        graph_interactions_filepath = f"{repo_path}/data/GEO/GSE122662/graph-experiments/toy_graph28nodes.txt"
+        master_regulators_init = f"{repo_path}/data/GEO/GSE122662/graph-experiments/28_nodes_MRs.txt"
+    elif whoami == 'manuel':
+        expert_checkpoint = "final_experiments(1)"
+
+    NUM_SIM_CELLS = 10
     experiment_buddy.register_defaults(locals())
     buddy = experiment_buddy.deploy(host="")
 
     # dataset_dict = open_datasets_json(return_specific_key='DS4')
     # dataset = dataset_namedtuple(*dataset_dict.values())
 
-    folder = "final_experiments(1)"
+
     dataset_dict = {
-        "interactions": f"{folder}/interactions.txt",
-        "regulators": f"{folder}/master_regulators.txt",
+        "interactions": graph_interactions_filepath,
+        "regulators": master_regulators_init,
         "params_outliers_genes_noise": [0.011175966309981848, 2.328873447557661, 0.5011137928428419],
         "params_library_size_noise": [9.961818165607404, 1.2905366314510822],
         "params_dropout_noise": [6.3136458044016655, 62.50611701257209],
         "tot_genes": 28,
-
+        "tot_cell_types": 2
+    }
     dataset = dataset_namedtuple(*dataset_dict.values())
 
-    expert_checkpoint_filepath = f"{folder}/expert.pth"
+    expert_checkpoint_filepath = f"{expert_checkpoint}"
     torch.manual_seed(0)
     torch.cuda.manual_seed_all(0)
     np.random.seed(0)
@@ -200,11 +172,11 @@ if __name__ == "__main__":
     loaded_checkpoint = torch.load(expert_checkpoint_filepath, map_location=lambda storage, loc: storage)
     classifier.load_state_dict(loaded_checkpoint)
     classifier.eval()
-    classifier = torch_to_jax(classifier)
+    classifier = torch_to_jax(classifier, use_simple_model=True)
 
     sim = Sim(
         num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types,
-        simulation_num_steps=params['NUM_SIM_CELLS'],
+        simulation_num_steps=NUM_SIM_CELLS,
         interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.9
     )
 
