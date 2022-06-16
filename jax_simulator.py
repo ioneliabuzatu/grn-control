@@ -211,16 +211,16 @@ def euler_maruyama_master(curr_genes_expression, basal_production_rate, q, key, 
     def concentration_forward(carry, noises):
         curr_concentration = carry
         decayed_production = jnp.multiply(0.8, curr_concentration)
-        # dw_production, dw_decay = noises
+        dw_production, dw_decay = noises
 
-        # amplitude_d = q * jnp.power(decayed_production, 0.5)
-        # amplitude_p = q * jnp.power(production_rates, 0.5)
+        amplitude_d = q * jnp.power(decayed_production, 0.5)
+        amplitude_p = q * jnp.power(production_rates, 0.5)
 
         decay = jnp.multiply(0.8, curr_concentration)
 
-        # noise = jnp.multiply(amplitude_p, dw_production) + jnp.multiply(amplitude_d, dw_decay)
+        noise = jnp.multiply(amplitude_p, dw_production) + jnp.multiply(amplitude_d, dw_decay)
 
-        next_gene_conc = curr_concentration + (dt * jnp.subtract(production_rates, decay))  # + jnp.power(dt, 0.5) * noise
+        next_gene_conc = curr_concentration + (dt * jnp.subtract(production_rates, decay))  + jnp.power(dt, 0.5) * noise
 
         next_gene_conc = jax.nn.relu(next_gene_conc)
         # next_gene_conc = jax.nn.softplus(next_gene_conc)
@@ -243,10 +243,10 @@ def euler_maruyama_targets(curr_genes_expression, q, production_rates, key, simu
         curr_x = carry
         dw_d_t, dw_p_t, production_rate_t = state
         decay = jnp.multiply(0.8, curr_x)
-        # amplitude_p = q * jnp.power(production_rate_t, 0.5)
-        # amplitude_d = q * jnp.power(decay, 0.5)
-        # noise = jnp.multiply(amplitude_p, dw_p_t) + jnp.multiply(amplitude_d, dw_d_t)
-        next_x = curr_x + (dt * jnp.subtract(production_rate_t, decay))  # + jnp.power(dt, 0.5) * noise
+        amplitude_p = q * jnp.power(production_rate_t, 0.5)
+        amplitude_d = q * jnp.power(decay, 0.5)
+        noise = jnp.multiply(amplitude_p, dw_p_t) + jnp.multiply(amplitude_d, dw_d_t)
+        next_x = curr_x + (dt * jnp.subtract(production_rate_t, decay))  + jnp.power(dt, 0.5) * noise
         next_x = jax.nn.relu(next_x)
         # next_x = jax.nn.softplus(next_x)
         return next_x, next_x
