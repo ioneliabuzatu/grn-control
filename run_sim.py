@@ -64,7 +64,7 @@ def plot_2_genes(genes):
 
 def run_jax_sim():
     start = time.time()
-    simulation_num_steps = 10#  3050
+    simulation_num_steps = 1000  #  3050
 
     dataset_dict = {
         "interactions": 'data/GEO/GSE122662/graph-experiments/toy_graph28nodes.txt',
@@ -99,12 +99,15 @@ def run_jax_sim():
             x = sim.run_one_rollout()
     else:
         x = sim.run_one_rollout()
-
     print(f"simulation took {time.time() - start_time}")
-    arr_expr = jnp.zeros(shape=(sim.num_genes, simulation_num_steps, 2))
-    for gene in range(sim.num_genes):
-        arr_expr = arr_expr.at[gene].set(x[gene])
-    all_expr = jnp.vstack([arr_expr[:, :, 0].T, arr_expr[:, :, 1].T])
+    x_to_array = jnp.stack(tuple([x[gene] for gene in range(sim.num_genes)])).swapaxes(0, 1)
+    all_expr = x_to_array[-1].T
+
+    # arr_expr = jnp.zeros(shape=(sim.num_genes, simulation_num_steps, 2))
+    # for gene in range(sim.num_genes):
+    #     arr_expr = arr_expr.at[gene].set(x[gene])
+    # all_expr = jnp.vstack([arr_expr[:, :, 0].T, arr_expr[:, :, 1].T])
+
     # expr_clean = jnp.stack(tuple([x[gene] for gene in range(sim.num_genes)])).swapaxes(0, 1)
     # plot_heatmap_all_expressions(expr_clean.mean(0), layers[0], show=True, close=False)
     # plt.close()
