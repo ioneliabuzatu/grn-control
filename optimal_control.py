@@ -27,6 +27,7 @@ from jax.example_libraries import optimizers
 # jax.config.update('jax_platform_name', 'cpu')
 
 np.set_printoptions(suppress=True)
+
 target_class = 0
 
 
@@ -55,27 +56,54 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 
     @jax.jit
     def loss_exp(actions):
-        trajectory = env.run_one_rollout(actions * mean_K)
+        trajectory = env.run_one_rollout(actions * mean_K) 
         trajectory = jnp.stack(tuple([trajectory[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
-
+  
+        # if add_technical_noise_function is not None:
+          #   all_expr_stack_by_type = add_technical_noise_function.get_noisy_technical_concentration(expression.T).T
+        # else:
+          #   all_expr_stack_by_type = jnp.vstack([expression[:, :, i] for i in range(expression.shape[2])])
+            
         last_state = trajectory[-1].T  # cell type is batch
         output_classifier = expert(last_state / mean_K)
+        
         # TODO: make the sum, max over the non target logits
         # TODO: afterwards, replace max with logsumexp to make it smooth
-
         gain = 2 * jnp.mean(output_classifier[:, target_class]) - jnp.mean(jnp.sum(output_classifier, axis=1), axis=0)
         return gain, last_state
+      
 
     def update(episode, opt_state_, check_expressions_for_convergence):
         actions = get_params(opt_state_)
         # print("actions going in value_and_grad", actions)
-        # actions = jnp.ones(shape=(num_master_genes, num_cell_types))
         (gain, last_state), grad = jax.value_and_grad(loss_exp, has_aux=True)(actions)
-        # loss, grad = jax.value_and_grad(loss_fn)(actions)
-
+      
         # print("grad before clipping", grad)
-
+        grad = jnp.clip(grad, -1, 1)
+        print("loss", loss)
         # print(f"grad shape: {grad.shape} \n grad: {grad}")
+
+        # writer.run.log({"loss": loss}, step=episode)
+        # writer.run.log({"grads": wandb.Image(sns.heatmap(grad, linewidth=0.5))}, step=episode)
+        # plt.close()
+        # writer.run.log({"actions": wandb.Image(sns.heatmap(actions, linewidth=0.5))}, step=episode)
+        # plt.close()
+        # fig = plt.figure(figsize=(10, 7))
+        # plt.plot(jnp.mean(jnp.array(expression), axis=0))
+        # writer.run.log({"control/mean": wandb.Image(fig)}, step=episode)
+        # plt.close()
+
+        # check_expressions_for_convergence.append(expression)
+        # if len(check_expressions_for_convergence) == 3:
+        #     expression = jnp.array(check_expressions_for_convergence)
+        #     last_x_points = expression[:, -20]
+        #     mean_x_points = jnp.mean(last_x_points, axis=0)
+        #     var_mean_x_points = jnp.var(last_x_points - mean_x_points, axis=0)
+        #     print((var_mean_x_points < 0.1).sum())
+        #     check_expressions_for_convergence = []
+
+        return opt_update(episode, grad, opt_state_), check_expressions_for_convergence
+
 
         # writer.run.log({"loss": loss}, step=episode)
         # writer.run.log({"grads": wandb.Image(sns.heatmap(grad, linewidth=0.5))}, step=episode)
@@ -145,14 +173,12 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 
 
 if __name__ == "__main__":
-    # ds4_ground_truth_initial_dist = np.load("data/ds4_10k_each_type.npy")
-
-    params = {'num_genes': '', 'NUM_SIM_CELLS': 10}
-    experiment_buddy.register_defaults(params)
+    experiment_buddy.register_defaults(locals())
     buddy = experiment_buddy.deploy(host="")
 
     # dataset_dict = open_datasets_json(return_specific_key='DS4')
     # dataset = dataset_namedtuple(*dataset_dict.values())
+
     folder = "final_experiments(1)"
     dataset_dict = {
         "interactions": f"{folder}/interactions.txt",
@@ -161,8 +187,6 @@ if __name__ == "__main__":
         "params_library_size_noise": [9.961818165607404, 1.2905366314510822],
         "params_dropout_noise": [6.3136458044016655, 62.50611701257209],
         "tot_genes": 28,
-        "tot_cell_types": 2,
-    }
 
     dataset = dataset_namedtuple(*dataset_dict.values())
 
@@ -170,6 +194,7 @@ if __name__ == "__main__":
     torch.manual_seed(0)
     torch.cuda.manual_seed_all(0)
     np.random.seed(0)
+
     classifier = CellStateClassifier(num_genes=dataset.tot_genes,
                                      num_cell_types=dataset.tot_cell_types).to("cpu")
     loaded_checkpoint = torch.load(expert_checkpoint_filepath, map_location=lambda storage, loc: storage)
