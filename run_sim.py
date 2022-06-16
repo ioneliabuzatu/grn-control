@@ -64,7 +64,12 @@ def plot_2_genes(genes):
 
 def run_jax_sim():
     start = time.time()
+<<<<<<< HEAD
     simulation_num_steps = 1000  #  3050
+=======
+
+    simulation_num_steps = 10  # 3050
+>>>>>>> 3226118f9c28aa9977105b919a25b844a37eb237
 
     dataset_dict = {
         "interactions": 'data/GEO/GSE122662/graph-experiments/toy_graph28nodes.txt',
@@ -83,14 +88,12 @@ def run_jax_sim():
                   interactions_filepath=dataset.interactions,
                   regulators_filepath=dataset.regulators,
                   simulation_num_steps=simulation_num_steps,
-                  noise_amplitude=0.8,
+                  noise_amplitude=0.9,
                   )
 
     start_time = time.time()
     adjacency, graph, layers = sim.build()
     print(f"compiling took {time.time() - start_time} | #layers={len(layers)}")
-
-    create_plot_graph(graph, verbose=False, dataset_name=f"tmp.png")
 
     if is_debugger_active():
         with jax.disable_jit():
@@ -111,6 +114,7 @@ def run_jax_sim():
     # expr_clean = jnp.stack(tuple([x[gene] for gene in range(sim.num_genes)])).swapaxes(0, 1)
     # plot_heatmap_all_expressions(expr_clean.mean(0), layers[0], show=True, close=False)
     # plt.close()
+    
     # genes = [expr_clean.T[0, 0], expr_clean.T[0, 1]]
     # plot_2_genes(genes)
 

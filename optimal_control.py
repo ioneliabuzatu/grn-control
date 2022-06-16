@@ -27,7 +27,6 @@ from jax.example_libraries import optimizers
 gene_names = {0: 'Sox2', 1: 'Obox6', 2: 'Klf4', 3: 'Esrrb', 4: 'Hmx1', 5: 'Myc', 6: 'Pou5f1', 7: 'Elf2', 8: 'Fmnl2', 9: 'Nfkb1', 10: 'Sirt7', 11: 'Rfx3', 12: 'Nr1i3', 13: 'Rfx5', 14: 'Hmg20a', 15: 'Ppp1r13b', 16: 'Polr3e', 17: 'Gmeb2', 18: 'Gmeb1', 19: 'Zfp282', 20: 'Ep300', 21: 'B930041F14Rik', 22: 'Zfp2', 23: 'Hdac10', 24: 'Asb6', 25: 'Zfp37', 26: 'Pou2f3', 27: 'Gdf9'}
 
 np.set_printoptions(suppress=True)
-
 target_class = 0
 
 
@@ -78,6 +77,23 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
         # TODO: afterwards, replace max with logsumexp to make it smooth
         gain = 2 * jnp.mean(output_classifier[:, target_class]) - jnp.mean(jnp.sum(output_classifier, axis=1), axis=0)
         print("###", output_classifier, jnp.mean(output_classifier[:, target_class]))
+
+    @jax.jit
+    def loss_exp(actions):
+        trajectory = env.run_one_rollout(actions * mean_K)
+        trajectory = jnp.stack(tuple([trajectory[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
+
+        # if add_technical_noise_function is not None:
+        #   all_expr_stack_by_type = add_technical_noise_function.get_noisy_technical_concentration(expression.T).T
+        # else:
+        #   all_expr_stack_by_type = jnp.vstack([expression[:, :, i] for i in range(expression.shape[2])])
+
+        last_state = trajectory[-1].T  # cell type is batch
+        output_classifier = expert(last_state / mean_K)
+
+        # TODO: make the sum, max over the non target logits
+        # TODO: afterwards, replace max with logsumexp to make it smooth
+        gain = 2 * jnp.mean(output_classifier[:, target_class]) - jnp.mean(jnp.sum(output_classifier, axis=1), axis=0)
         return gain, last_state
 
     def update(episode, opt_state_, check_expressions_for_convergence):
@@ -98,6 +114,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
     # opt_init, opt_update, get_params = optimizers.adam(step_size=0.1)
     a0 = jnp.ones(shape=(num_master_genes, num_cell_types))
     # a0 = jnp.array(np.random.random(size=(num_master_genes, num_cell_types)))
+    # opt_state = opt_init(jnp.ones(shape=(num_master_genes, num_cell_types)))
     opt_state = opt_init(a0)
 
     check_expressions_for_convergence = []
@@ -166,6 +183,9 @@ if __name__ == "__main__":
     experiment_buddy.register_defaults(locals())
     buddy = experiment_buddy.deploy(host="", disabled=False)
 
+    # dataset_dict = open_datasets_json(return_specific_key='DS4')
+    # dataset = dataset_namedtuple(*dataset_dict.values())
+
     dataset_dict = {
         "interactions": graph_interactions_filepath,
         "regulators": master_regulators_init,
@@ -210,7 +230,7 @@ if __name__ == "__main__":
     #     dataset.params_outliers_genes_noise, dataset.params_library_size_noise, dataset.params_dropout_noise
     # )
     if is_debugger_active():
-        sim.simulation_num_steps = 10
+        sim.simulation_num_steps = 1
         with jax.disable_jit():
             control(sim, 5, dataset.tot_cell_types, len(sim.layers[0]), classifier,
                     writer=buddy,

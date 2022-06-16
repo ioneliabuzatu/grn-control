@@ -73,13 +73,19 @@ class Sim:
 
     def run_one_rollout(self, actions=None):
         """return the gene expression of shape [samples, genes]"""
+        basal_production_rates = jnp.array(
+            get_basal_production_rate(self.regulators_filename, self.num_genes, self.num_cell_types))
         if actions is not None:
             basal_production_rates = jnp.zeros((self.num_genes, self.num_cell_types))
             for action_gene, master_id in zip(actions, self.layers[0]):
-                basal_production_rates = basal_production_rates.at[master_id].set(action_gene)
-        else:
-            basal_production_rates = jnp.array(
-                get_basal_production_rate(self.regulators_filename, self.num_genes, self.num_cell_types))
+                print("action:", action_gene.primal)
+                new_gene_expression = jax.nn.relu(action_gene) # basal_production_rates[master_id] * (action_gene+0.001)
+                # print("debug:", basal_production_rates[master_id] * (action_gene+0.001))
+                print("looking inside...", new_gene_expression.primal, action_gene.primal)
+                basal_production_rates = basal_production_rates.at[master_id].set(new_gene_expression)
+        # else:
+        #     basal_production_rates = jnp.array(
+        #         get_basal_production_rate(self.regulators_filename, self.num_genes, self.num_cell_types))
 
         self.next_seed()
         x = self.simulate_expression_layer_wise(basal_production_rates, seed=self.seed)
@@ -107,7 +113,7 @@ class Sim:
         mean_expression = {idx: jnp.mean(x[idx], axis=0) for idx in master_layer}
 
         runtime = time.time() - start_master_layer
-        print("master layer took", time.time() - start_master_layer)
+        # print("master layer took", time.time() - start_master_layer, f"#genes {len(master_layer)}")
         y_axis_plot.append(runtime)
 
         for num_layer, layer in enumerate(layers_copy[1:], start=1):
@@ -133,15 +139,14 @@ class Sim:
             mean_expression.update({idx: jnp.mean(x[idx], axis=0) for idx in layer})
 
             runtime = time.time() - start_layer
-            print(f"num layer {num_layer} took {runtime}")
+            # print(f"num layer {num_layer} took {runtime}", f"#genes {len(layer)}")
         #     y_axis_plot.append(runtime)
         #
         # plt.figure(figsize=(4, 4))
-        # plt.title("runtime of layers compiling")
+        # plt.title("runtime of layers compiling")>>>>>>> main
         # step = 1.0/len(y_axis_plot)
         # x_pos = np.arange(0.0, 1.0, step)[:len(y_axis_plot)]
         # width = step-(step/3)  # width has to be lower than 'step'
-        # print(step, width)
         # plt.bar(x_pos, y_axis_plot, color='pink', width=width, align='center')
         # # plt.xticks(y_axis_plot, np.arange(0, len(y_axis_plot)))
         # plt.xlabel("layer")
@@ -204,7 +209,6 @@ def euler_maruyama_master(curr_genes_expression, basal_production_rate, q, key, 
 
     def concentration_forward(carry, noises):
         curr_concentration = carry
-        print("master compiling step...")
         decayed_production = jnp.multiply(0.8, curr_concentration)
         dw_production, dw_decay = noises
 
@@ -215,8 +219,7 @@ def euler_maruyama_master(curr_genes_expression, basal_production_rate, q, key, 
 
         noise = jnp.multiply(amplitude_p, dw_production) + jnp.multiply(amplitude_d, dw_decay)
 
-        next_gene_conc = curr_concentration + (dt * jnp.subtract(production_rates, decay)) + jnp.power(
-            dt, 0.5) * noise
+        next_gene_conc = curr_concentration + (dt * jnp.subtract(production_rates, decay))  + jnp.power(dt, 0.5) * noise
 
         next_gene_conc = jax.nn.relu(next_gene_conc)
         # next_gene_conc = jax.nn.softplus(next_gene_conc)
@@ -237,13 +240,12 @@ def euler_maruyama_targets(curr_genes_expression, q, production_rates, key, simu
 
     def step(carry, state):
         curr_x = carry
-        print("target compiling step...")
         dw_d_t, dw_p_t, production_rate_t = state
         decay = jnp.multiply(0.8, curr_x)
         amplitude_p = q * jnp.power(production_rate_t, 0.5)
         amplitude_d = q * jnp.power(decay, 0.5)
         noise = jnp.multiply(amplitude_p, dw_p_t) + jnp.multiply(amplitude_d, dw_d_t)
-        next_x = curr_x + (dt * jnp.subtract(production_rate_t, decay)) + jnp.power(dt, 0.5) * noise
+        next_x = curr_x + (dt * jnp.subtract(production_rate_t, decay))  + jnp.power(dt, 0.5) * noise
         next_x = jax.nn.relu(next_x)
         # next_x = jax.nn.softplus(next_x)
         return next_x, next_x
