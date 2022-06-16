@@ -64,7 +64,8 @@ def plot_2_genes(genes):
 
 def run_jax_sim():
     start = time.time()
-    simulation_num_steps = 10
+
+    simulation_num_steps = 10  # 3050
 
     dataset_dict = {
         "interactions": 'data/GEO/GSE122662/graph-experiments/toy_graph28nodes.txt',
@@ -90,8 +91,6 @@ def run_jax_sim():
     adjacency, graph, layers = sim.build()
     print(f"compiling took {time.time() - start_time} | #layers={len(layers)}")
 
-    create_plot_graph(graph, verbose=False, dataset_name=f"tmp.png")
-
     if is_debugger_active():
         with jax.disable_jit():
             simulation_num_steps = 10
@@ -108,8 +107,7 @@ def run_jax_sim():
     # expr_clean = jnp.stack(tuple([x[gene] for gene in range(sim.num_genes)])).swapaxes(0, 1)
     # plot_heatmap_all_expressions(expr_clean.mean(0), layers[0], show=True, close=False)
     # plt.close()
-    # print(f"sim output clean x: {expr_clean.shape}.")
-
+    
     # genes = [expr_clean.T[0, 0], expr_clean.T[0, 1]]
     # plot_2_genes(genes)
 
@@ -120,8 +118,8 @@ def run_jax_sim():
     # print(f"concat_clean_x.shape={all_expr.shape}")
     # np.save("simulated_106G_expr.npy", all_expr)
 
-    # np.save("noisy_simulated_106G_expr.npy", all_expr)
-    # os.exist()
+    # np.save("data_simulated_28G_expr_with_q=1_and_softplus.npy", all_expr)
+    # sys.exit()
 
     print(f"noisy all_expr.shape={all_expr.shape}")
     classifier = MiniCellStateClassifier(num_genes=28, num_cell_types=2).to("cpu")

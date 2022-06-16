@@ -76,8 +76,7 @@ class Sim:
         basal_production_rates = jnp.array(
             get_basal_production_rate(self.regulators_filename, self.num_genes, self.num_cell_types))
         if actions is not None:
-            # actions = jnp.array(np.random.rand(len(self.layers[0])))
-            # basal_production_rates = jnp.zeros((self.num_genes, self.num_cell_types))
+            basal_production_rates = jnp.zeros((self.num_genes, self.num_cell_types))
             for action_gene, master_id in zip(actions, self.layers[0]):
                 print("action:", action_gene.primal)
                 new_gene_expression = jax.nn.relu(action_gene) # basal_production_rates[master_id] * (action_gene+0.001)
@@ -144,7 +143,7 @@ class Sim:
         #     y_axis_plot.append(runtime)
         #
         # plt.figure(figsize=(4, 4))
-        # plt.title("runtime of layers compiling")
+        # plt.title("runtime of layers compiling")>>>>>>> main
         # step = 1.0/len(y_axis_plot)
         # x_pos = np.arange(0.0, 1.0, step)[:len(y_axis_plot)]
         # width = step-(step/3)  # width has to be lower than 'step'

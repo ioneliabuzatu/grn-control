@@ -110,10 +110,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-<<<<<<< HEAD
-=======
 .idea
->>>>>>> d34fc18b97bce6c3fb433300d2aece0da6497268
 
 # Spyder project settings
 .spyderproject
@@ -156,5 +153,5 @@ src/all_about_visualization.py
 src/optimize_sc_noise.py
 ssa.py
 v2_sergio.py
-dca-denoise
+dca-denoise/
 signet-outputs/
