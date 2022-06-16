@@ -54,7 +54,7 @@ def plot_three_genes(genes: list, hlines=None, xmax=1500, title=""):
     plt.suptitle(title)
     plt.show()
 
-    
+
 def convert_mtx_matrix_to_csv_format(mex_dir, counts_filename, features_filename, barcodes_filename):
     """works as bash cmd: `cellranger mat2csv mtx-format/ data_converted.csv`
         where mtx-format containes 3 files [barcodes, features, counts]"""
