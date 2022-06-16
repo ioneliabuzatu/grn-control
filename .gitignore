@@ -156,3 +156,5 @@ src/all_about_visualization.py
 src/optimize_sc_noise.py
 ssa.py
 v2_sergio.py
+dca-denoise/
+signet-outputs/

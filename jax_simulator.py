@@ -74,7 +74,6 @@ class Sim:
     def run_one_rollout(self, actions=None):
         """return the gene expression of shape [samples, genes]"""
         if actions is not None:
-            actions = jnp.array(np.random.rand(len(self.layers[0])))
             basal_production_rates = jnp.zeros((self.num_genes, self.num_cell_types))
             for action_gene, master_id in zip(actions, self.layers[0]):
                 basal_production_rates = basal_production_rates.at[master_id].set(action_gene)

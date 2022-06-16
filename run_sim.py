@@ -1,16 +1,42 @@
 import time
-
+import os
 import jax
 import jax.numpy as jnp
 import numpy as np
 from matplotlib import pyplot as plt
 
 from jax_simulator import Sim as jax_sim
+# from speedy_jax_simulator import Sim as jax_sim
 from numpy_simulator import Sim as np_sim
 from src.all_about_visualization import plot_heatmap_all_expressions
 # from src.models.expert.classfier_cell_state import CellStateClassifier, torch_to_jax
-from src.zoo_functions import create_plot_graph
+from src.zoo_functions import create_plot_graph, open_datasets_json
 from src.zoo_functions import is_debugger_active, dataset_namedtuple
+import time
+from src.techinical_noise import AddTechnicalNoiseJax
+
+from matplotlib import pyplot as plt
+
+from src.zoo_functions import dataset_namedtuple, open_datasets_json
+import numpy as np
+
+import jax
+import jax.numpy as jnp
+import torch
+import sys
+from jax_simulator import Sim
+from src.models.expert.classfier_cell_state import CellStateClassifier, MiniCellStateClassifier
+from src.models.expert.classfier_cell_state import torch_to_jax
+from src.techinical_noise import AddTechnicalNoiseJax
+from src.zoo_functions import is_debugger_active
+from src.zoo_functions import plot_three_genes
+import experiment_buddy
+import wandb
+import seaborn as sns
+from jax.example_libraries import optimizers
+
+# from scipy.spatial import distance_matrix
+# from src.all_about_visualization import plot_heatmap_all_expressions
 
 np.seterr(invalid="raise")
 
@@ -38,25 +64,20 @@ def plot_2_genes(genes):
 
 def run_jax_sim():
     start = time.time()
-    simulation_num_steps = 100
-    # dataset_dict = {
-    #     "interactions": "tmp_interactions.txt",  # '1,1,0,-200,2'
-    #     "regulators": "tmp_regulators.txt",  # '0,1,5'
-    #     "params_outliers_genes_noise": [0.01, 0.8, 1],
-    #     "params_library_size_noise": [4.8, 0.3],
-    #     "params_dropout_noise": [20, 82],
-    #     "tot_genes": 2,
-    #     "tot_cell_types": 2
-# }
+    simulation_num_steps = 10#  3050
+
     dataset_dict = {
-        "interactions": "data/interactions_random_graph_500_genes.txt",  # '1,1,0,-200,2'
-        "regulators": "tmp_regulators.txt",  # '0,1,5'
-        "params_outliers_genes_noise": [0.01, 0.8, 1],
-        "params_library_size_noise": [4.8, 0.3],
-        "params_dropout_noise": [20, 82],
-        "tot_genes": 500,
-        "tot_cell_types": 2
+        "interactions": 'data/GEO/GSE122662/graph-experiments/toy_graph28nodes.txt',
+        "regulators": "data/GEO/GSE122662/graph-experiments/28_nodes_MRs.txt",
+        "params_outliers_genes_noise": [0.011039100623008497, 1.4255511751527647, 2.35380330573968],
+        "params_library_size_noise": [1.001506520357257, 1.7313202816171356],
+        "params_dropout_noise": [4.833139049292777, 62.38254284061924],
+        "tot_genes": 28,
+        "tot_cell_types": 2,
     }
+
+    # which_dataset_name = "Dummy"
+    # dataset_dict = open_datasets_json(return_specific_key=which_dataset_name)
     dataset = dataset_namedtuple(*dataset_dict.values())
     sim = jax_sim(num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types,
                   interactions_filepath=dataset.interactions,
@@ -67,33 +88,51 @@ def run_jax_sim():
 
     start_time = time.time()
     adjacency, graph, layers = sim.build()
-    print(f"compiling took {time.time() - start_time}")
+    print(f"compiling took {time.time() - start_time} | #layers={len(layers)}")
 
-    # create_plot_graph(graph, verbose=False, dataset_name=f"tmp.png")
+    create_plot_graph(graph, verbose=False, dataset_name=f"tmp.png")
 
-    # if is_debugger_active():
-    #     with jax.disable_jit():
-    #         simulation_num_steps = 10
-    #         sim.simulation_num_steps = simulation_num_steps
-    #         x = sim.run_one_rollout()
-    # else:
-    #     x = sim.run_one_rollout(actions=1)
-
-    simulation_num_steps = 10
-    sim.simulation_num_steps = simulation_num_steps
-    x = sim.run_one_rollout()
+    if is_debugger_active():
+        with jax.disable_jit():
+            simulation_num_steps = 10
+            sim.simulation_num_steps = simulation_num_steps
+            x = sim.run_one_rollout()
+    else:
+        x = sim.run_one_rollout()
 
     print(f"simulation took {time.time() - start_time}")
+    arr_expr = jnp.zeros(shape=(sim.num_genes, simulation_num_steps, 2))
+    for gene in range(sim.num_genes):
+        arr_expr = arr_expr.at[gene].set(x[gene])
+    all_expr = jnp.vstack([arr_expr[:, :, 0].T, arr_expr[:, :, 1].T])
+    # expr_clean = jnp.stack(tuple([x[gene] for gene in range(sim.num_genes)])).swapaxes(0, 1)
+    # plot_heatmap_all_expressions(expr_clean.mean(0), layers[0], show=True, close=False)
+    # plt.close()
+    # genes = [expr_clean.T[0, 0], expr_clean.T[0, 1]]
+    # plot_2_genes(genes)
 
-    expr_clean = jnp.stack(tuple([x[gene] for gene in range(sim.num_genes)])).swapaxes(0, 1)
+    # expr_per_cell_type = [expr_clean[:, :, i]/expr_clean[:, :, i].mean(axis=1, keepdims=True) for i in range(
+    #     expr_clean.shape[2])]
+    # expr_per_cell_type = [expr_clean[:, :, i] for i in range(expr_clean.shape[2])]
+    # all_expr = jnp.vstack(expr_per_cell_type)
+    # print(f"concat_clean_x.shape={all_expr.shape}")
+    # np.save("simulated_106G_expr.npy", all_expr)
 
-    plot_heatmap_all_expressions(expr_clean.mean(0), layers[0], show=True, close=False)
-    plt.close()
-    print(expr_clean.shape)
-    print(f"time: {time.time() - start}.3f")
+    # np.save("data_simulated_28G_expr_with_q=1_and_softplus.npy", all_expr)
+    # sys.exit()
 
-    genes = [expr_clean.T[0, 0], expr_clean.T[0, 1]]
-    plot_2_genes(genes)
+    print(f"noisy all_expr.shape={all_expr.shape}")
+    classifier = MiniCellStateClassifier(num_genes=28, num_cell_types=2).to("cpu")
+    loaded_checkpoint = torch.load(
+        "data/GEO/GSE122662/graph-experiments/expert_28_genes_2_layer.pth", map_location=lambda storage, loc: storage
+    )
+    classifier.load_state_dict(loaded_checkpoint)
+    classifier.eval()
+    classifier = torch_to_jax(classifier, use_simple_model=True)
+    output = classifier(all_expr)
+    np.set_printoptions(suppress=True)
+    print(output.argmax(1))
+    print(jax.nn.softmax(output))
 
 
 def run_numpy_sim():
