@@ -57,26 +57,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
     y_axis_labels = [gene_names[gene] for gene in sim.layers[0]]
     heatmap_kwargs = {'linewidth':5, 'xticklabels':['D0', 'iPSC'], 'yticklabels':y_axis_labels, 'cbar_kws':{"shrink":
                                                                                                                 .7},
-                      'square':True}
-
-    @jax.jit
-    def loss_exp(actions):
-        trajectory = env.run_one_rollout(actions * mean_K)
-        trajectory = jnp.stack(tuple([trajectory[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
-
-        # if add_technical_noise_function is not None:
-        #   all_expr_stack_by_type = add_technical_noise_function.get_noisy_technical_concentration(expression.T).T
-        # else:
-        #   all_expr_stack_by_type = jnp.vstack([expression[:, :, i] for i in range(expression.shape[2])])
-        assert trajectory.shape == (sim.simulation_num_steps, sim.num_genes, num_cell_types), print(trajectory.shape)
-
-        last_state = trajectory[-1].T  # cell type is batch
-        output_classifier = expert(last_state / mean_K)
-
-        # TODO: make the sum, max over the non target logits
-        # TODO: afterwards, replace max with logsumexp to make it smooth
-        gain = 2 * jnp.mean(output_classifier[:, target_class]) - jnp.mean(jnp.sum(output_classifier, axis=1), axis=0)
-        print("###", output_classifier, jnp.mean(output_classifier[:, target_class]))
+                      'square':True, 'cmap':'viridis'}
 
     @jax.jit
     def loss_exp(actions):
@@ -112,8 +93,8 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
     opt_init, opt_update, get_params = optimizers.adam(step_size=0.05)
     # opt_init, opt_update, get_params = optimizers.momentum(step_size=0.005, mass=0.1)
     # opt_init, opt_update, get_params = optimizers.adam(step_size=0.1)
-    a0 = jnp.ones(shape=(num_master_genes, num_cell_types))
-    # a0 = jnp.array(np.random.random(size=(num_master_genes, num_cell_types)))
+    # a0 = jnp.ones(shape=(num_master_genes, num_cell_types))
+    a0 = jnp.array(np.random.random(size=(num_master_genes, num_cell_types)))
     # opt_state = opt_init(jnp.ones(shape=(num_master_genes, num_cell_types)))
     opt_state = opt_init(a0)
 
@@ -140,7 +121,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
             # print("ctypes-other:", logits[:, 1])
 
             plt.figure(figsize=(3.5, 10))
-            heatmap_grads = sns.heatmap(grad, **heatmap_kwargs)
+            heatmap_grads = sns.heatmap((grad-grad.mean(0))/grad.std(0), **heatmap_kwargs)
             writer.run.log({"metrics/sensitivity_analysis": wandb.Image(heatmap_grads)}, step=episode)
             plt.close()
             writer.run.log({"metrics/gain": gain}, step=episode)
@@ -158,7 +139,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
             writer.run.log({f"actions/D0 mean": actions[:, 0].mean()}, step=episode)
             writer.run.log({f"actions/iPSC mean": actions[:, 1].mean()}, step=episode)
             plt.figure(figsize=(3.5, 10))
-            heatmap_actions = sns.heatmap(actions, **heatmap_kwargs)
+            heatmap_actions = sns.heatmap((actions-actions.mean(0))/actions.std(0), **heatmap_kwargs)
             writer.run.log({"actions/heatmap_actions": wandb.Image(heatmap_actions)}, step=episode)
             plt.close()
 
@@ -212,7 +193,7 @@ if __name__ == "__main__":
     sim = Sim(
         num_genes=dataset.tot_genes, num_cells_types=dataset.tot_cell_types,
         simulation_num_steps=NUM_SIM_CELLS,
-        interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.9
+        interactions_filepath=dataset.interactions, regulators_filepath=dataset.regulators, noise_amplitude=0.7
     )
 
     start = time.time()
@@ -230,14 +211,14 @@ if __name__ == "__main__":
     #     dataset.params_outliers_genes_noise, dataset.params_library_size_noise, dataset.params_dropout_noise
     # )
     if is_debugger_active():
-        sim.simulation_num_steps = 1
+        sim.simulation_num_steps = 5
         with jax.disable_jit():
             control(sim, 5, dataset.tot_cell_types, len(sim.layers[0]), classifier,
                     writer=buddy,
                     # add_technical_noise_function=add_technical_noise
                     )
     else:
-        num_episodes = 999
+        num_episodes = 70
         control(sim, num_episodes, dataset.tot_cell_types, len(sim.layers[0]), classifier,
                 writer=buddy,
                 # add_technical_noise_function=add_technical_noise
