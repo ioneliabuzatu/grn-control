@@ -64,13 +64,7 @@ def plot_2_genes(genes):
 
 def run_jax_sim():
     start = time.time()
-<<<<<<< HEAD
-    simulation_num_steps = 1000  #  3050
-=======
-
     simulation_num_steps = 10  # 3050
->>>>>>> 3226118f9c28aa9977105b919a25b844a37eb237
-
     dataset_dict = {
         "interactions": 'data/GEO/GSE122662/graph-experiments/toy_graph28nodes.txt',
         "regulators": "data/GEO/GSE122662/graph-experiments/28_nodes_MRs.txt",
