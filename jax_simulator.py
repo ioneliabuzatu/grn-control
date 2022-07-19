@@ -78,10 +78,10 @@ class Sim:
         if actions is not None:
             basal_production_rates = jnp.zeros((self.num_genes, self.num_cell_types))
             for action_gene, master_id in zip(actions, self.layers[0]):
-                print("action:", action_gene.primal)
+                print("action:", action_gene)
                 new_gene_expression = jax.nn.relu(action_gene) # basal_production_rates[master_id] * (action_gene+0.001)
                 # print("debug:", basal_production_rates[master_id] * (action_gene+0.001))
-                print("looking inside...", new_gene_expression.primal, action_gene.primal)
+                print("looking inside...", new_gene_expression, action_gene)
                 basal_production_rates = basal_production_rates.at[master_id].set(new_gene_expression)
         # else:
         #     basal_production_rates = jnp.array(
