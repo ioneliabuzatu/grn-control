@@ -1,4 +1,5 @@
 import functools
+import os.path
 import time
 from copy import deepcopy
 
@@ -71,21 +72,41 @@ class Sim:
         self.layers = topo_sort_graph_layers(graph)
         return adjacency, graph, self.layers
 
-    def run_one_rollout(self, actions=None):
-        """return the gene expression of shape [samples, genes]"""
-        basal_production_rates = jnp.array(
-            get_basal_production_rate(self.regulators_filename, self.num_genes, self.num_cell_types))
+    def run_one_rollout(self, actions=None, load_basal_production_from_file=True, context_bandits=False):
+        """
+        :param actions: array containing the values to initialize the controlled nodes.
+        :param load_basal_production_from_file: if True reads the file to init nodes values.
+        :param context_bandits: if True will run contextual bandits, RL otherwise.
+        :return: gene expression == nodes values.
+        """
+        if load_basal_production_from_file:
+            assert os.path.exists(self.regulators_filename)
+            basal_production_rates = jnp.array(
+                get_basal_production_rate(
+                    self.regulators_filename,
+                    self.num_genes,
+                    self.num_cell_types)
+            )
         if actions is not None:
-            basal_production_rates = jnp.zeros((self.num_genes, self.num_cell_types))
-            for action_gene, master_id in zip(actions, self.layers[0]):
-                print("action:", action_gene)
-                new_gene_expression = jax.nn.relu(action_gene) # basal_production_rates[master_id] * (action_gene+0.001)
-                # print("debug:", basal_production_rates[master_id] * (action_gene+0.001))
-                print("looking inside...", new_gene_expression, action_gene)
+            if context_bandits and not load_basal_production_from_file:
+                basal_production_rates = jnp.zeros(shape=(self.num_genes, self.num_cell_types))
+
+            if not context_bandits:
+                try:
+                    basal_production_rates = self.previous_t
+                except AttributeError:
+                    if not load_basal_production_from_file:
+                        basal_production_rates = jnp.zeros(shape=(self.num_genes, self.num_cell_types))
+
+            for idx_action, (action_gene, master_id) in enumerate(zip(actions, self.layers[0])):
+                new_gene_expression = basal_production_rates[master_id] + jax.nn.relu(action_gene)
                 basal_production_rates = basal_production_rates.at[master_id].set(new_gene_expression)
-        # else:
-        #     basal_production_rates = jnp.array(
-        #         get_basal_production_rate(self.regulators_filename, self.num_genes, self.num_cell_types))
+
+        if not context_bandits:
+            try:
+                assert hasattr(self.previous_t)
+            except AttributeError:
+                self.previous_t = None
 
         self.next_seed()
         x = self.simulate_expression_layer_wise(basal_production_rates, seed=self.seed)
