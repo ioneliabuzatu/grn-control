@@ -35,7 +35,7 @@ def main():
         print(f"run {wandb_run_name} in progress...")
 
         buddy = experiment_buddy.deploy(
-            host="", disabled=False,
+            host=generals_params['host'], disabled=False,
             wandb_kwargs={
                 'sync_tensorboard': False,
                 'monitor_gym': True,
