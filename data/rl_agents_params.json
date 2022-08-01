@@ -1,6 +1,6 @@
 {
   "train_sac": {
-    "env_name": "gene_control-v0",
+    "env_name": "gene_control-v1",
     "n_envs": 1,
     "model_load_kwargs": {
       "gamma": 0,
@@ -9,7 +9,7 @@
       "device": "cuda"
     },
     "model_learn_kwargs": {
-      "total_timesteps": 100000
+      "total_timesteps": 50
     },
     "model_learn_wandb_callback_kwargs": {
       "gradient_save_freq": 10,
@@ -19,11 +19,11 @@
       "path": "models/rl/sac"
     },
     "model_predict_kwargs": {
-      "time_steps": 10
+      "time_steps": 50
     }
   },
   "train_ppo": {
-    "env_name": "gene_control-v0",
+    "env_name": "gene_control-v1",
     "n_envs": 2,
     "model_load_kwargs": {
       "policy": "MlpPolicy",
@@ -33,7 +33,7 @@
       "gamma": 0
     },
     "model_learn_kwargs": {
-      "total_timesteps": 100000
+      "total_timesteps": 50
     },
     "model_learn_wandb_callback_kwargs": {
       "gradient_save_freq": 10,
@@ -43,11 +43,11 @@
       "path": "models/rl/ppo"
     },
     "model_predict_kwargs": {
-      "time_steps": 10
+      "time_steps": 50
     }
   },
   "train_ddpg": {
-    "env_name": "gene_control-v0",
+    "env_name": "gene_control-v1",
     "n_envs": 1,
     "model_load_kwargs": {
       "gamma": 0,
@@ -56,7 +56,7 @@
       "device": "cuda"
     },
     "model_learn_kwargs": {
-      "total_timesteps": 100000
+      "total_timesteps": 50
     },
     "model_learn_wandb_callback_kwargs": {
       "gradient_save_freq": 10,
@@ -66,11 +66,11 @@
       "path": "models/rl/ddpg"
     },
     "model_predict_kwargs": {
-      "time_steps": 10
+      "time_steps": 50
     }
   },
   "train_td3": {
-    "env_name": "gene_control-v0",
+    "env_name": "gene_control-v1",
     "n_envs": 1,
     "model_load_kwargs": {
       "gamma": 0,
@@ -79,7 +79,7 @@
       "device": "cuda"
     },
     "model_learn_kwargs": {
-      "total_timesteps": 100000
+      "total_timesteps": 50
     },
     "model_learn_wandb_callback_kwargs": {
       "gradient_save_freq": 10,
@@ -89,21 +89,22 @@
       "path": "models/rl/td3"
     },
     "model_predict_kwargs": {
-      "time_steps": 10
+      "time_steps": 50
     }
   },
   "train_a2c": {
-    "env_name": "gene_control-v0",
+    "env_name": "gene_control-v1",
     "n_envs": 1,
     "model_load_kwargs": {
-      "gamma": 0,
+      "gamma": 0.95,
       "policy": "MlpPolicy",
       "verbose": 5,
       "device": "cuda",
-      "n_steps": 1
+      "n_steps": 3,
+      "seed": 1234
     },
     "model_learn_kwargs": {
-      "total_timesteps": 100000
+      "total_timesteps": 20
     },
     "model_learn_wandb_callback_kwargs": {
       "gradient_save_freq": 10,
@@ -113,7 +114,14 @@
       "path": "models/rl/a2c"
     },
     "model_predict_kwargs": {
-      "time_steps": 10
+      "time_steps": 50
     }
+  },
+  "generals": {
+    "run_rl": 0,
+    "target_cell_type": 0,
+    "interactions_glob_filepath":"/home/ionelia/projects/grn-control/data/GEO/GSE122662/graph-experiments/interactions_18_genes_thesis.txt",
+    "regulators_glob_filepath":"/home/ionelia/projects/grn-control/data/GEO/GSE122662/graph-experiments/mrs_18_genes.txt",
+    "expert_checkpoint_glob_filepath":"/home/ionelia/projects/grn-control/src/models/expert/checkpoints/expert_thesis_trained_on_real.pth"
   }
 }

@@ -23,8 +23,7 @@ class config():
     whoami = getpass.getuser()
     if whoami == 'ionelia':
         checkpoint_folder = "src/models/expert/checkpoints/"
-        data = "/home/ionelia/pycharm-projects/grn-control/data/GEO/GSE122662/graph-experiments" \
-               "/28_genes_last_col_are_labels.npy"
+        data = "/home/ionelia/projects/grn-control/data/GEO/GSE122662/graph-experiments/real_10k18G_for_train_expert.npy"
     elif whoami == 'ionelia.buzatu':
         from pathlib import Path
         home = str(Path.home())
@@ -32,17 +31,17 @@ class config():
         data = "data/ds4_10k_each_type.npy"
 
     tensorboard = True
-    num_genes = 28
+    num_genes = 18
     num_cell_types = 2
     lr = 1e-4
-    epochs = 300
+    epochs = 50
     batch_size = 600
     normalize_by_max = False
 
 
 config = config()
 experiment_buddy.register_defaults({'dataset': '?', **config.__dict__})
-writer = experiment_buddy.deploy(host="", wandb_run_name="2 layers 28 genes", disabled=False, wandb_kwargs={
+writer = experiment_buddy.deploy(host="", wandb_run_name="2 layers 18 genes#trained on the real data", disabled=False, wandb_kwargs={
     'project': "train-expert"})
 
 
@@ -92,8 +91,7 @@ def train(filepath_training_data, epochs=200, show_confusion_matrix=False):
         if mean_accuracy > val_accuracy:
             val_accuracy = mean_accuracy
             logging.info(f"Saving new model...new accuracy (val): {val_accuracy}")
-            torch.save(network.state_dict(), os.path.join(config.checkpoint_folder,
-                                                          "expert_106G_trained_on_de_noised_debug.pth"))
+            torch.save(network.state_dict(), os.path.join(config.checkpoint_folder, "expert_thesis_trained_on_real.pth"))
 
         if show_confusion_matrix:
             nb_classes = 2

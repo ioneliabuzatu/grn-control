@@ -50,7 +50,7 @@ class Sim:
     def build(self):
         adjacency, graph = load_grn_jax(self.interactions_filename, self.adjacency)
 
-        self.adjacency = jnp.array(adjacency)  # TODO change it to jnp
+        self.adjacency = jnp.array(adjacency)
         self.regulators_dict = dict()
         self.is_repressive = list()
 
@@ -72,7 +72,7 @@ class Sim:
         self.layers = topo_sort_graph_layers(graph)
         return adjacency, graph, self.layers
 
-    def run_one_rollout(self, actions=None, load_basal_production_from_file=True, context_bandits=False):
+    def run_one_rollout(self, actions=None, load_basal_production_from_file=True, context_bandits=False, target_idx=0):
         """
         :param actions: array containing the values to initialize the controlled nodes.
         :param load_basal_production_from_file: if True reads the file to init nodes values.
@@ -99,14 +99,12 @@ class Sim:
                         basal_production_rates = jnp.zeros(shape=(self.num_genes, self.num_cell_types))
 
             for idx_action, (action_gene, master_id) in enumerate(zip(actions, self.layers[0])):
-                new_gene_expression = basal_production_rates[master_id] + jax.nn.relu(action_gene)
-                basal_production_rates = basal_production_rates.at[master_id].set(new_gene_expression)
+                new_gene_expression = basal_production_rates[master_id, target_idx] + jax.nn.relu(action_gene)
+                basal_production_rates = basal_production_rates.at[master_id, target_idx].set(new_gene_expression)
 
         if not context_bandits:
-            try:
-                assert hasattr(self.previous_t)
-            except AttributeError:
-                self.previous_t = None
+            if not hasattr(self, 'previous_t'):
+                self.previous_t = basal_production_rates
 
         self.next_seed()
         x = self.simulate_expression_layer_wise(basal_production_rates, seed=self.seed)

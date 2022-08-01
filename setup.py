@@ -10,5 +10,6 @@ setup(
         'jax',
         'jaxlib',
         'torch',
+        'tensorboard'
     ]
 )

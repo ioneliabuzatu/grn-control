@@ -24,7 +24,12 @@ from jax.example_libraries import optimizers
 # from src.all_about_visualization import plot_heatmap_all_expressions
 
 # jax.config.update('jax_platform_name', 'cpu')
-gene_names = {0: 'Sox2', 1: 'Obox6', 2: 'Klf4', 3: 'Esrrb', 4: 'Hmx1', 5: 'Myc', 6: 'Pou5f1', 7: 'Elf2', 8: 'Fmnl2', 9: 'Nfkb1', 10: 'Sirt7', 11: 'Rfx3', 12: 'Nr1i3', 13: 'Rfx5', 14: 'Hmg20a', 15: 'Ppp1r13b', 16: 'Polr3e', 17: 'Gmeb2', 18: 'Gmeb1', 19: 'Zfp282', 20: 'Ep300', 21: 'B930041F14Rik', 22: 'Zfp2', 23: 'Hdac10', 24: 'Asb6', 25: 'Zfp37', 26: 'Pou2f3', 27: 'Gdf9'}
+# gene_names_28 = {0: 'Sox2', 1: 'Obox6', 2: 'Klf4', 3: 'Esrrb', 4: 'Hmx1', 5: 'Myc', 6: 'Pou5f1', 7: 'Elf2', 8: 'Fmnl2',
+#               9: 'Nfkb1', 10: 'Sirt7', 11: 'Rfx3', 12: 'Nr1i3', 13: 'Rfx5', 14: 'Hmg20a', 15: 'Ppp1r13b', 16: 'Polr3e',
+#               17: 'Gmeb2', 18: 'Gmeb1', 19: 'Zfp282', 20: 'Ep300', 21: 'B930041F14Rik', 22: 'Zfp2', 23: 'Hdac10',
+#               24: 'Asb6', 25: 'Zfp37', 26: 'Pou2f3', 27: 'Gdf9'}
+
+gene_names = {}
 
 np.set_printoptions(suppress=True)
 target_class = 0
@@ -55,9 +60,10 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
     print(f"mean Ks: {mean_K:.3f}")
 
     y_axis_labels = [gene_names[gene] for gene in sim.layers[0]]
-    heatmap_kwargs = {'linewidth':5, 'xticklabels':['D0', 'iPSC'], 'yticklabels':y_axis_labels, 'cbar_kws':{"shrink":
-                                                                                                                .7},
-                      'square':True, 'cmap':'viridis'}
+    heatmap_kwargs = {'linewidth': 5, 'xticklabels': ['D0', 'iPSC'], 'yticklabels': y_axis_labels,
+                      'cbar_kws': {"shrink":
+                                       .7},
+                      'square': True, 'cmap': 'viridis'}
 
     @jax.jit
     def loss_exp(actions):
@@ -74,7 +80,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 
         # TODO: make the sum, max over the non target logits
         # TODO: afterwards, replace max with logsumexp to make it smooth
-        gain = 2 * jnp.mean(output_classifier[:, target_class]) - jnp.mean(jnp.sum(output_classifier, axis=1), axis=0)
+        gain = 2 * jnp.mean(output_classifier[:, target_class]) - jnp.mean(jnp.logaddexp(output_classifier[:, 1-target_class], axis=1), axis=0)
         return gain, last_state
 
     def update(episode, opt_state_, check_expressions_for_convergence):
@@ -121,7 +127,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
             # print("ctypes-other:", logits[:, 1])
 
             plt.figure(figsize=(3.5, 10))
-            heatmap_grads = sns.heatmap((grad-grad.mean(0))/grad.std(0), **heatmap_kwargs)
+            heatmap_grads = sns.heatmap((grad - grad.mean(0)) / grad.std(0), **heatmap_kwargs)
             writer.run.log({"metrics/sensitivity_analysis": wandb.Image(heatmap_grads)}, step=episode)
             plt.close()
             writer.run.log({"metrics/gain": gain}, step=episode)
@@ -139,7 +145,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
             writer.run.log({f"actions/D0 mean": actions[:, 0].mean()}, step=episode)
             writer.run.log({f"actions/iPSC mean": actions[:, 1].mean()}, step=episode)
             plt.figure(figsize=(3.5, 10))
-            heatmap_actions = sns.heatmap((actions-actions.mean(0))/actions.std(0), **heatmap_kwargs)
+            heatmap_actions = sns.heatmap((actions - actions.mean(0)) / actions.std(0), **heatmap_kwargs)
             writer.run.log({"actions/heatmap_actions": wandb.Image(heatmap_actions)}, step=episode)
             plt.close()
 
@@ -149,20 +155,28 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
 if __name__ == "__main__":
     import getpass
     from pathlib import Path
+
     whoami = getpass.getuser()
     home = str(Path.home())
     print("home:", home)
     if whoami == 'ionelia':
-        repo_path = f"{home}/pycharm-projects/grn-control"
-        expert_checkpoint = f"{repo_path}/data/GEO/GSE122662/graph-experiments/expert_28_genes_2_layer.pth"
-        graph_interactions_filepath = f"{repo_path}/data/GEO/GSE122662/graph-experiments/toy_graph28nodes.txt"
-        master_regulators_init = f"{repo_path}/data/GEO/GSE122662/graph-experiments/28_nodes_MRs.txt"
-    elif whoami == 'manuel':
-        expert_checkpoint = "final_experiments(1)"
+        repo_path = f"{home}/projects/grn-control"
+        files_path = "/data/GEO/GSE122662/graph-experiments"
+        # expert_checkpoint = f"{repo_path}/data/GEO/GSE122662/graph-experiments/expert_28_genes_2_layer.pth"
+        # graph_interactions_filepath = f"{repo_path}/data/GEO/GSE122662/graph-experiments/toy_graph28nodes.txt"
+        # master_regulators_init = f"{repo_path}/data/GEO/GSE122662/graph-experiments/28_nodes_MRs.txt"
+        expert_checkpoint = f"{repo_path}/src/models/expert/checkpoints/expert_thesis_trained_on_sim.pth"
+        graph_interactions_filepath = f"{repo_path}/{files_path}/interactions_18_genes_thesis.txt"
+        master_regulators_init = f"{repo_path}/{files_path}/mrs_18_genes.txt"
+    elif whoami == 'ionelia.buzatu':
+        expert_checkpoint = "toto cluster"
 
     NUM_SIM_CELLS = 1
     experiment_buddy.register_defaults(locals())
-    buddy = experiment_buddy.deploy(host="", disabled=False)
+    writer = experiment_buddy.deploy(
+        host="", wandb_run_name="OC with sim expert 18G",
+        disabled=False, wandb_kwargs={'project': "policy-gradient"}
+    )
 
     # dataset_dict = open_datasets_json(return_specific_key='DS4')
     # dataset = dataset_namedtuple(*dataset_dict.values())
@@ -173,7 +187,7 @@ if __name__ == "__main__":
         "params_outliers_genes_noise": [0.011175966309981848, 2.328873447557661, 0.5011137928428419],
         "params_library_size_noise": [9.961818165607404, 1.2905366314510822],
         "params_dropout_noise": [6.3136458044016655, 62.50611701257209],
-        "tot_genes": 28,
+        "tot_genes": 18,
         "tot_cell_types": 2
     }
     dataset = dataset_namedtuple(*dataset_dict.values())
@@ -214,12 +228,12 @@ if __name__ == "__main__":
         sim.simulation_num_steps = 5
         with jax.disable_jit():
             control(sim, 5, dataset.tot_cell_types, len(sim.layers[0]), classifier,
-                    writer=buddy,
+                    writer=writer,
                     # add_technical_noise_function=add_technical_noise
                     )
     else:
-        num_episodes = 70
+        num_episodes = 700
         control(sim, num_episodes, dataset.tot_cell_types, len(sim.layers[0]), classifier,
-                writer=buddy,
+                writer=writer,
                 # add_technical_noise_function=add_technical_noise
                 )

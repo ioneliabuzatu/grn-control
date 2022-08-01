@@ -192,17 +192,19 @@ class TranscriptomicsDataset(Dataset):
         np.random.seed(seed)
         self.normalize_data = normalize_by_max
         self.device = device
-        self.data = np.load(filepath_data, allow_pickle=True)
+        self.data = np.load(filepath_data, allow_pickle=True).astype(np.float32)
         print(f"data input has size: {self.data.shape}")
         if isinstance(self.data[0, 0], str):
             self.genes_names = self.data[0, :]
             self.data = self.data[1:, :]
         self.preprocess_data()
         self.labels_encoding, self.labels_categorical = np.unique(self.data[:, -1], return_inverse=True)
+        print(f"labels data: {self.labels_categorical}")
         # self.labels_encoding, self.labels_categorical = np.unique(
         #     np.concatenate([np.array([str(x)] * 10000, dtype=object) for x in range(9)], axis=0), return_inverse=True)
 
     def __getitem__(self, idx):
+        """last column of self.data contains the labels"""
         x = torch.tensor(self.data[idx, :-1], dtype=torch.float32)
         # y = torch.tensor(self.data[idx, -1], dtype=torch.long)
         # data = self.data[idx] # indices_to_set_to_zero = np.random.permutation(self.num_genes_to_zero_for_batch_sgd)
