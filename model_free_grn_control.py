@@ -32,12 +32,12 @@ def main():
         run_prefix = f"bandits#{agent.__name__}"
         run_suffix = f"#steer:{generals_params['target_cell_type']}#runRL:{generals_params['run_rl']}"
         wandb_run_name = f"{run_prefix}#{run_suffix}"
-        print(f"run {wandb_run_name} in progress...")
+        print(f"run ***{wandb_run_name}*** in progress...")
 
         buddy = experiment_buddy.deploy(
             host=generals_params['host'], disabled=False,
             wandb_kwargs={
-                'sync_tensorboard': False,
+                'sync_tensorboard': True,
                 'monitor_gym': True,
                 'save_code': True,
                 'entity': 'control-grn',
