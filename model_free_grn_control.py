@@ -39,7 +39,8 @@ def main():
         print(f"run ***{wandb_run_name}*** in progress...")
 
         buddy = experiment_buddy.deploy(
-            host=generals_params['host'], disabled=False,
+            host=generals_params['host'],
+            disabled=False,
             wandb_kwargs={
                 'sync_tensorboard': False,
                 'monitor_gym': True,
@@ -49,7 +50,7 @@ def main():
                 'reinit': True
             },
             wandb_run_name=wandb_run_name,
-            extra_modules=['cudatoolkit/11.1']
+            # extra_modules=['cudatoolkit/11.1']
         )
         run = buddy.run
 
