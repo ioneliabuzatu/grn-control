@@ -49,7 +49,7 @@ def main():
                 'reinit': True
             },
             wandb_run_name=wandb_run_name,
-            extra_modules=['cudatoolkit/11.1']
+            # extra_modules=['cudatoolkit/11.1']
         )
         run = buddy.run
 
