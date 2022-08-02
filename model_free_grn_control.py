@@ -1,3 +1,5 @@
+import os
+
 import experiment_buddy
 import gym_gene_control  # noqa
 from src.rl_agents import train_a2c # noqa
@@ -14,7 +16,9 @@ def main():
     if whoami == 'ionelia':
         filepath='data/rl_agents_params.json'
     elif whoami == 'ionelia.buzatu':
-        filepath = "todo/rl_agents_params.json"
+        filepath = "/network/projects/_groups/grn_control/graphD0D18genes#18/thesis_rl_agents_params.json"
+        
+    print(f"Loading JSON file from: {filepath}")
     json_params = open_datasets_json(filepath=filepath)
 
     agent_to_train = [train_a2c, train_td3, train_sac, train_ppo, train_ddpg]
@@ -32,7 +36,7 @@ def main():
         run_prefix = f"bandits#{agent.__name__}"
         run_suffix = f"#steer:{generals_params['target_cell_type']}#runRL:{generals_params['run_rl']}"
         wandb_run_name = f"{run_prefix}#{run_suffix}"
-        print(f"run {wandb_run_name} in progress...")
+        print(f"run ***{wandb_run_name}*** in progress...")
 
         buddy = experiment_buddy.deploy(
             host=generals_params['host'], disabled=False,
@@ -44,7 +48,8 @@ def main():
                 'project': 'context-bandits',
                 'reinit': True
             },
-            wandb_run_name=wandb_run_name
+            wandb_run_name=wandb_run_name,
+            extra_modules=['cudatoolkit/11.1']
         )
         run = buddy.run
 

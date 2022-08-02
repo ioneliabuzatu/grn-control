@@ -7,9 +7,6 @@ setup(
         'gym',
         'numpy',
         'networkx',
-        'jax',
-        'jaxlib',
-        'torch',
         'tensorboard'
     ]
 )
