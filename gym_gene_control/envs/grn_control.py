@@ -125,12 +125,12 @@ class GRNControlEnvThesis(gym.Env):
             extra_info = {}
             print(f"step#{self.count_steps}|actions:{actions}")
 
-        if reward.dtype == jnp.float32:
-            self.plotter.log({"reward/training reward": reward}, step=self.count_steps)
-        else:
-            self.plotter.log({"reward/training reward": reward[0]}, step=self.count_steps)
-
         if self.plotter is not None:
+            if reward.dtype == jnp.float32:
+                self.plotter.log({"reward/training reward": reward}, step=self.count_steps)
+            else:
+                self.plotter.log({"reward/training reward": reward[0]}, step=self.count_steps)
+
             self.plotter.log({"logits/argmax(axis=1).mean()": expert_logits.argmax(axis=1).mean()},
                              step=self.count_steps)
             self.plotter.log({"logits/target_class.mean()": expert_logits[:, self.target_cell_type].mean()},
@@ -145,7 +145,7 @@ class GRNControlEnvThesis(gym.Env):
                 heatmap_step = self.count_steps // 10
                 heatmap_kwargs = {'linewidth': 0.1, 'cbar_kws': {"shrink": .3}, 'square': True, 'cmap': 'viridis'}
 
-                norm_actions = (actions - actions.mean()) / actions.std()
+                norm_actions = (actions - actions.mean()) / (actions.std()+0.001)
                 heatmap_actions = sns.heatmap(norm_actions.reshape(1, *norm_actions.shape),
                                               **heatmap_kwargs,
                                               yticklabels=['D0' if self.target_cell_type == 0 else 'iPSC'])
@@ -154,6 +154,7 @@ class GRNControlEnvThesis(gym.Env):
 
                 heatmap_gene_expr = sns.heatmap(x_T.T, yticklabels=['D0', 'iPSC'], **heatmap_kwargs)
                 self.plotter.log({"heatmaps/gene_expression": wandb.Image(heatmap_gene_expr)}, step=heatmap_step)
+                plt.close()
 
         self.count_steps += 1
         print(f"training reward:", reward)

@@ -17,7 +17,7 @@ from stable_baselines3.common.noise import NormalActionNoise
 from wandb.integration.sb3 import WandbCallback
 from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes  # noqa
 from stable_baselines3.common.callbacks import CallbackList
-
+import matplotlib.pyplot as plt
 import gym_gene_control  # noqa
 
 __all__ = [
@@ -94,7 +94,7 @@ def predict(env, model, run, time_steps: int = 10):
 
     batch_sensitivity /= time_steps
     batch_sensitivity = np.abs(batch_sensitivity)
-    run.log({f'{model.__class__.__name__}': wandb.plots.HeatMap(
+    run.log({f'sensitivity_analysis/{model.__class__.__name__}': wandb.plots.HeatMap(
         genes_names,
         ['D0', 'iPSC'],
         batch_sensitivity.T, show_text=False)})
@@ -102,7 +102,8 @@ def predict(env, model, run, time_steps: int = 10):
     heatmap_kwargs = {
         'linewidth': 5, 'xticklabels': ['D0', 'iPSC'], 'cbar_kws': {"shrink": .7}, 'square': True, 'cmap': 'viridis'}
     heatmap_actions = sns.heatmap(batch_sensitivity, **heatmap_kwargs)
-    run.log({"actions/heatmap_actions": wandb.Image(heatmap_actions)}, step=0)
+    run.log({"+/heatmap_actions": wandb.Image(heatmap_actions)}, step=0)
+    plt.close()
 
 
 def train_a2c(run, agent_kwargs, generals_kwargs):

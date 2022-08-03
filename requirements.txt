@@ -5,7 +5,6 @@ experiment_buddy
 numpy
 sklearn
 scikit-learn
-jax
 matplotlib
 emcee
 seaborn
