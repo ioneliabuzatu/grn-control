@@ -17,7 +17,9 @@ def main():
         filepath='data/rl_agents_params.json'
     elif whoami == 'ionelia.buzatu':
         filepath = "/network/projects/_groups/grn_control/graphD0D18genes#18/thesis_rl_agents_params.json"
-        
+
+    os.system('module list')
+
     print(f"Loading JSON file from: {filepath}")
     json_params = open_datasets_json(filepath=filepath)
 
@@ -39,7 +41,8 @@ def main():
         print(f"run ***{wandb_run_name}*** in progress...")
 
         buddy = experiment_buddy.deploy(
-            host=generals_params['host'], disabled=False,
+            host=generals_params['host'],
+            disabled=False,
             wandb_kwargs={
                 'sync_tensorboard': False,
                 'monitor_gym': True,
@@ -49,7 +52,7 @@ def main():
                 'reinit': True
             },
             wandb_run_name=wandb_run_name,
-            extra_modules=['cudatoolkit/11.1']
+            extra_modules=['cudatoolkit/11.1', 'cuda/11.1', 'cuda/11.1/cudnn/8.1']
         )
         run = buddy.run
 
