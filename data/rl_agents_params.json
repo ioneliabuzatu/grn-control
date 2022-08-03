@@ -9,7 +9,7 @@
       "device": "cuda"
     },
     "model_learn_kwargs": {
-      "total_timesteps": 50
+      "total_timesteps": 500000
     },
     "model_learn_wandb_callback_kwargs": {
       "gradient_save_freq": 10,
@@ -19,7 +19,7 @@
       "path": "models/rl/sac"
     },
     "model_predict_kwargs": {
-      "time_steps": 50
+      "time_steps": 1000
     }
   },
   "train_ppo": {
@@ -33,7 +33,7 @@
       "gamma": 0
     },
     "model_learn_kwargs": {
-      "total_timesteps": 50
+      "total_timesteps": 500000
     },
     "model_learn_wandb_callback_kwargs": {
       "gradient_save_freq": 10,
@@ -43,7 +43,7 @@
       "path": "models/rl/ppo"
     },
     "model_predict_kwargs": {
-      "time_steps": 50
+      "time_steps": 1000
     }
   },
   "train_ddpg": {
@@ -56,7 +56,7 @@
       "device": "cuda"
     },
     "model_learn_kwargs": {
-      "total_timesteps": 50
+      "total_timesteps": 500000
     },
     "model_learn_wandb_callback_kwargs": {
       "gradient_save_freq": 10,
@@ -66,7 +66,7 @@
       "path": "models/rl/ddpg"
     },
     "model_predict_kwargs": {
-      "time_steps": 50
+      "time_steps": 1000
     }
   },
   "train_td3": {
@@ -79,7 +79,7 @@
       "device": "cuda"
     },
     "model_learn_kwargs": {
-      "total_timesteps": 50
+      "total_timesteps": 500000
     },
     "model_learn_wandb_callback_kwargs": {
       "gradient_save_freq": 10,
@@ -89,7 +89,7 @@
       "path": "models/rl/td3"
     },
     "model_predict_kwargs": {
-      "time_steps": 50
+      "time_steps": 1000
     }
   },
   "train_a2c": {
@@ -104,7 +104,7 @@
       "seed": 1234
     },
     "model_learn_kwargs": {
-      "total_timesteps": 20
+      "total_timesteps": 500000
     },
     "model_learn_wandb_callback_kwargs": {
       "gradient_save_freq": 10,
@@ -114,7 +114,7 @@
       "path": "models/rl/a2c"
     },
     "model_predict_kwargs": {
-      "time_steps": 50
+      "time_steps": 1000
     }
   },
   "generals": {

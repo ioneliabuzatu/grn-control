@@ -17,14 +17,17 @@ def main():
         filepath='data/rl_agents_params.json'
     elif whoami == 'ionelia.buzatu':
         filepath = "/network/projects/_groups/grn_control/graphD0D18genes#18/thesis_rl_agents_params.json"
-        
+
     print(f"Loading JSON file from: {filepath}")
     json_params = open_datasets_json(filepath=filepath)
+    generals_params = json_params['generals']
 
     agent_to_train = [train_a2c, train_td3, train_sac, train_ppo, train_ddpg]
 
     config = {
         "policy_type": "MlpPolicy",
+        "cell_id_to_steer": generals_params['target_cell_type'],
+        "runRL(bool)": generals_params['run_rl']
     }
 
     experiment_buddy.register_defaults(config)
@@ -32,16 +35,16 @@ def main():
     for agent in agent_to_train:
 
         agent_params_kwargs = json_params[agent.__name__]
-        generals_params = json_params['generals']
         run_prefix = f"bandits#{agent.__name__}"
         run_suffix = f"#steer:{generals_params['target_cell_type']}#runRL:{generals_params['run_rl']}"
         wandb_run_name = f"{run_prefix}#{run_suffix}"
         print(f"run ***{wandb_run_name}*** in progress...")
 
         buddy = experiment_buddy.deploy(
-            host=generals_params['host'], disabled=False,
+            host=generals_params['host'],
+            disabled=False,
             wandb_kwargs={
-                'sync_tensorboard': False,
+                'sync_tensorboard': True,
                 'monitor_gym': True,
                 'save_code': True,
                 'entity': 'control-grn',
@@ -49,7 +52,8 @@ def main():
                 'reinit': True
             },
             wandb_run_name=wandb_run_name,
-            extra_modules=['cudatoolkit/11.1']
+            extra_modules=["cuda/11.1/nccl/2.10", "cudatoolkit/11.1", "cuda/11.1/cudnn/8.1"]
+            
         )
         run = buddy.run
 

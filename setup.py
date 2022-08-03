@@ -7,6 +7,5 @@ setup(
         'gym',
         'numpy',
         'networkx',
-        'tensorboard'
     ]
 )
