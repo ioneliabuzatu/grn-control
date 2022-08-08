@@ -51,7 +51,7 @@ def main():
                 'project': 'context-bandits',
                 'reinit': True
             },
-            wandb_run_name=wandb_run_name,
+            wandb_run_name=f"bandits#200ksteer1{agent.__name__  }", # wandb_run_name,
             extra_modules=["cuda/11.1/nccl/2.10", "cudatoolkit/11.1", "cuda/11.1/cudnn/8.1"]
             
         )
