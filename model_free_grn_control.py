@@ -22,7 +22,8 @@ def main():
     json_params = open_datasets_json(filepath=filepath)
     generals_params = json_params['generals']
 
-    agent_to_train = [train_a2c, train_td3, train_sac, train_ppo, train_ddpg]
+    # agent_to_train = [train_a2c, train_td3, train_sac, train_ppo, train_ddpg]
+    agent_to_train = [train_sac, train_ppo, train_ddpg]
 
     config = {
         "policy_type": "MlpPolicy",
@@ -51,7 +52,7 @@ def main():
                 'project': 'context-bandits',
                 'reinit': True
             },
-            wandb_run_name=wandb_run_name,
+            wandb_run_name=f"bandits#500ksteer0{agent.__name__  }", # wandb_run_name,
             extra_modules=["cuda/11.1/nccl/2.10", "cudatoolkit/11.1", "cuda/11.1/cudnn/8.1"]
             
         )
