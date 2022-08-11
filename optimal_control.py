@@ -175,7 +175,7 @@ if __name__ == "__main__":
     experiment_buddy.register_defaults(locals())
     writer = experiment_buddy.deploy(
         host="", wandb_run_name="OC with sim expert 18G",
-        disabled=False, wandb_kwargs={'project': "policy-gradient"}
+        disabled=True, wandb_kwargs={'project': "optimal_control"}
     )
 
     # dataset_dict = open_datasets_json(return_specific_key='DS4')

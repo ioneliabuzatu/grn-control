@@ -25,7 +25,7 @@ class GRNControlEnvThesis(gym.Env):
                  regulators_glob_filepath=None,
                  expert_checkpoint_glob_filepath=None,
                  noise_amplitude=0.7,
-                 rl_num_intermediate_steps=3,
+                 rl_num_intermediate_steps=5,
                  num_cells_to_sim=5,
                  tot_genes=18,
                  tot_cell_types=2, **kwargs):
@@ -41,7 +41,7 @@ class GRNControlEnvThesis(gym.Env):
         self.num_cells_to_sim = num_cells_to_sim
         self.intermediate_steps = rl_num_intermediate_steps
 
-        print('--- RL' if run_rl else '--- Bandits', f"control cell of index **{target_cell_type}** ---")
+        print('|------- RL' if run_rl else '--- Bandits', f"control cell of index **{target_cell_type}** ------|")
 
         dataset_dict = {
             "interactions": interactions_glob_filepath,
