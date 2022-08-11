@@ -80,7 +80,7 @@ def predict(env, model, run, time_steps: int = 10):
     obs = env.reset()
     batch_sensitivity = plot_sensitivity(model, np.array(obs))
 
-    for step in range(time_steps):
+    for step in range(0, time_steps):
         actions, _states = model.predict(obs)
         obs, rewards, dones, info = env.step(actions)
 

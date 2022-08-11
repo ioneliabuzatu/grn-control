@@ -35,10 +35,8 @@ def main():
     for agent in agent_to_train:
 
         agent_params_kwargs = json_params[agent.__name__]
-        run_prefix = f"bandits#{agent.__name__}"
         run_suffix = f"#steer:{generals_params['target_cell_type']}#runRL:{generals_params['run_rl']}"
-        wandb_run_name = f"{run_prefix}#{run_suffix}"
-        print(f"run ***{wandb_run_name}*** in progress...")
+        wandb_run_name = f"#{run_suffix}"
 
         buddy = experiment_buddy.deploy(
             host=generals_params['host'],
@@ -48,14 +46,15 @@ def main():
                 'monitor_gym': True,
                 'save_code': True,
                 'entity': 'control-grn',
-                'project': 'context-bandits',
+                'project': 'RL',
                 'reinit': True
             },
-            wandb_run_name=wandb_run_name,
+            wandb_run_name=f"RL#2M#steer{generals_params['target_cell_type']}#{str(agent.__name__)}",
             extra_modules=["cuda/11.1/nccl/2.10", "cudatoolkit/11.1", "cuda/11.1/cudnn/8.1"]
             
         )
         run = buddy.run
+        print(f"running ***{wandb_run_name}*** in progress...")
 
         agent(run, agent_params_kwargs, json_params['generals'])
 
