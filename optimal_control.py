@@ -1,38 +1,34 @@
 import time
 
-from matplotlib import pyplot as plt
-
-from src.zoo_functions import dataset_namedtuple, open_datasets_json
-import numpy as np
-
+import experiment_buddy
 import jax
 import jax.numpy as jnp
+import numpy as np
+import seaborn as sns
 import torch
-import sys
+import wandb
+from jax.example_libraries import optimizers
+from matplotlib import pyplot as plt
+
 from jax_simulator import Sim
 from src.models.expert.classfier_cell_state import MiniCellStateClassifier as CellStateClassifier
 from src.models.expert.classfier_cell_state import torch_to_jax
-from src.techinical_noise import AddTechnicalNoiseJax
+from src.zoo_functions import dataset_namedtuple
 from src.zoo_functions import is_debugger_active
-from src.zoo_functions import plot_three_genes
-import experiment_buddy
-import wandb
-import seaborn as sns
-from jax.example_libraries import optimizers
-
-# from scipy.spatial import distance_matrix
-# from src.all_about_visualization import plot_heatmap_all_expressions
 
 # jax.config.update('jax_platform_name', 'cpu')
-# gene_names_28 = {0: 'Sox2', 1: 'Obox6', 2: 'Klf4', 3: 'Esrrb', 4: 'Hmx1', 5: 'Myc', 6: 'Pou5f1', 7: 'Elf2', 8: 'Fmnl2',
-#               9: 'Nfkb1', 10: 'Sirt7', 11: 'Rfx3', 12: 'Nr1i3', 13: 'Rfx5', 14: 'Hmg20a', 15: 'Ppp1r13b', 16: 'Polr3e',
-#               17: 'Gmeb2', 18: 'Gmeb1', 19: 'Zfp282', 20: 'Ep300', 21: 'B930041F14Rik', 22: 'Zfp2', 23: 'Hdac10',
-#               24: 'Asb6', 25: 'Zfp37', 26: 'Pou2f3', 27: 'Gdf9'}
+# gene_names_28 = { 0: 'Sox2', 1: 'Obox6', 2: 'Klf4', 3: 'Esrrb',
+# 4: 'Hmx1', 5: 'Myc', 6: 'Pou5f1', 7: 'Elf2', 8: 'Fmnl2', 9: 'Nfkb1', 10: 'Sirt7', 11: 'Rfx3', 12: 'Nr1i3',
+# 13: 'Rfx5', 14: 'Hmg20a', 15: 'Ppp1r13b', 16: 'Polr3e', 17: 'Gmeb2', 18: 'Gmeb1', 19: 'Zfp282', 20: 'Ep300',
+# 21: 'B930041F14Rik', 22: 'Zfp2', 23: 'Hdac10', 24: 'Asb6', 25: 'Zfp37', 26: 'Pou2f3', 27: 'Gdf9'}
 
-gene_names = {}
+gene_names = {
+    0: 'Cdkn2a', 1: 'Xist', 2: 'Sox2', 3: 'Nanog', 4: 'Tdgf1', 5: 'Zfp42', 6: 'Fmr1nb', 7: 'Ooep', 8: 'Tcl1',
+    9: 'Obox6', 10: 'Klf4', 11: 'Esrrb', 12: 'Dppa4', 13: 'Myc', 14: 'Lncenc1', 15: 'Sohlh2', 16: 'Pou5f1', 17: 'Gdf9'
+}
 
 np.set_printoptions(suppress=True)
-target_class = 0
+target_class = 1
 
 
 def cross_entropy(logprobs, target_to_steer):
@@ -54,20 +50,22 @@ def cross_entropy(logprobs, target_to_steer):
     return cs
 
 
-def control(env, num_episodes, num_cell_types, num_master_genes, expert, visualise_samples_genes=False,
+def control(env, num_episodes, num_master_genes, expert, visualise_samples_genes=False,
             writer=None, add_technical_noise_function=None):
     mean_K = env.adjacency[env.adjacency > 0].mean()
     print(f"mean Ks: {mean_K:.3f}")
 
     y_axis_labels = [gene_names[gene] for gene in sim.layers[0]]
-    heatmap_kwargs = {'linewidth': 5, 'xticklabels': ['D0', 'iPSC'], 'yticklabels': y_axis_labels,
-                      'cbar_kws': {"shrink":
-                                       .7},
-                      'square': True, 'cmap': 'viridis'}
+    heatmap_kwargs = {'linewidth': 5,
+                      'yticklabels': y_axis_labels,
+                      'cbar_kws': {"shrink": .7},
+                      'square': True, 'cmap': 'viridis',
+                      'xticklabels': ['D0' if target_class == 0 else 'iPSC']
+                      }
 
     @jax.jit
     def loss_exp(actions):
-        trajectory = env.run_one_rollout(actions * mean_K)
+        trajectory = env.run_one_rollout(actions, target_idx=target_class)
         trajectory = jnp.stack(tuple([trajectory[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
 
         # if add_technical_noise_function is not None:
@@ -76,11 +74,9 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
         #   all_expr_stack_by_type = jnp.vstack([expression[:, :, i] for i in range(expression.shape[2])])
 
         last_state = trajectory[-1].T  # cell type is batch
-        output_classifier = expert(last_state / mean_K)
+        output_classifier = expert(last_state)
 
-        # TODO: make the sum, max over the non target logits
-        # TODO: afterwards, replace max with logsumexp to make it smooth
-        gain = 2 * jnp.mean(output_classifier[:, target_class]) - jnp.mean(jnp.logaddexp(output_classifier[:, 1-target_class], axis=1), axis=0)
+        gain = 2*jnp.mean(output_classifier[:, target_class]) - jnp.mean(output_classifier[:, 1-target_class], axis=0)
         return gain, last_state
 
     def update(episode, opt_state_, check_expressions_for_convergence):
@@ -99,9 +95,7 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
     opt_init, opt_update, get_params = optimizers.adam(step_size=0.05)
     # opt_init, opt_update, get_params = optimizers.momentum(step_size=0.005, mass=0.1)
     # opt_init, opt_update, get_params = optimizers.adam(step_size=0.1)
-    # a0 = jnp.ones(shape=(num_master_genes, num_cell_types))
-    a0 = jnp.array(np.random.random(size=(num_master_genes, num_cell_types)))
-    # opt_state = opt_init(jnp.ones(shape=(num_master_genes, num_cell_types)))
+    a0 = jnp.array(np.random.random(size=(num_master_genes,)))  # MEMO remember initially was also num_cell_types)))
     opt_state = opt_init(a0)
 
     check_expressions_for_convergence = []
@@ -121,17 +115,16 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
         if episode % 1 == 0:
             actions = get_params(opt_state) * mean_K
             # logits = last_state
-            print("gain", gain, target_class_mean_prob, grad.mean())
-            # print("ctypes", logits.argmax(axis=1))
-            # print("ctypes-target:", logits[:, 0])
-            # print("ctypes-other:", logits[:, 1])
+            print(f"episode:{episode}|gain:{gain}|target_class_mean_prob|grad.mean()")
 
             plt.figure(figsize=(3.5, 10))
-            heatmap_grads = sns.heatmap((grad - grad.mean(0)) / grad.std(0), **heatmap_kwargs)
-            writer.run.log({"metrics/sensitivity_analysis": wandb.Image(heatmap_grads)}, step=episode)
+            heatmap_grads = (grad - grad.mean(0)) / grad.std(0)
+            heatmap_grads = sns.heatmap(heatmap_grads.reshape(1, *heatmap_grads.shape).T, **heatmap_kwargs)
+            writer.run.log({"heatmaps/sensitivity_analysis": wandb.Image(heatmap_grads)}, step=episode)
             plt.close()
+
             writer.run.log({"metrics/gain": gain}, step=episode)
-            writer.run.log({"metrics/grads": grad.mean()}, step=episode)
+            writer.run.log({"metrics/grads.mean()": grad.mean()}, step=episode)
 
             writer.run.log({"logits/argmax(axis=1).mean()": logits.argmax(axis=1).mean()}, step=episode)
             writer.run.log({"logits/target_class.mean()": logits[:, target_class].mean()}, step=episode)
@@ -140,14 +133,21 @@ def control(env, num_episodes, num_cell_types, num_master_genes, expert, visuali
             writer.run.log({f"p/target": wandb.Histogram(probs[:, target_class])}, step=episode)
             writer.run.log({f"p/not_target": wandb.Histogram(probs[:, 1 - target_class])}, step=episode)
             writer.run.log({"p/target_class_prob": target_class_mean_prob}, step=episode)
-            writer.run.log({"p/offtarget_class_prob": offtarget_class_mean_prob}, step=episode)
+            writer.run.log({"p/off_target_class_prob": offtarget_class_mean_prob}, step=episode)
 
-            writer.run.log({f"actions/D0 mean": actions[:, 0].mean()}, step=episode)
-            writer.run.log({f"actions/iPSC mean": actions[:, 1].mean()}, step=episode)
             plt.figure(figsize=(3.5, 10))
-            heatmap_actions = sns.heatmap((actions - actions.mean(0)) / actions.std(0), **heatmap_kwargs)
-            writer.run.log({"actions/heatmap_actions": wandb.Image(heatmap_actions)}, step=episode)
+            heatmap_actions = (actions - actions.mean(0)) / actions.std(0)
+            heatmap_actions_reshape = sns.heatmap(heatmap_actions.reshape(1, *heatmap_actions.shape).T,
+                                                  **heatmap_kwargs)
+            writer.run.log({"heatmaps/actions": wandb.Image(heatmap_actions_reshape)}, step=episode)
             plt.close()
+
+            # heatmap_gene_expr = sns.heatmap(last_state.T, xticklabels=['D0', 'iPSC'], **heatmap_kwargs)
+            # writer.run.log({"heatmaps/gene_expression": wandb.Image(heatmap_gene_expr)}, step=episode)
+            # plt.close() # TODO uncomment 3 lines above
+
+            for idx, _action in enumerate(actions):
+                writer.run.log({f"actions/{y_axis_labels[idx]}": actions[idx]}, step=episode)
 
     print(f"policy gradient simulation control took {round(time.time() - start)} secs.")
 
@@ -165,7 +165,7 @@ if __name__ == "__main__":
         # expert_checkpoint = f"{repo_path}/data/GEO/GSE122662/graph-experiments/expert_28_genes_2_layer.pth"
         # graph_interactions_filepath = f"{repo_path}/data/GEO/GSE122662/graph-experiments/toy_graph28nodes.txt"
         # master_regulators_init = f"{repo_path}/data/GEO/GSE122662/graph-experiments/28_nodes_MRs.txt"
-        expert_checkpoint = f"{repo_path}/src/models/expert/checkpoints/expert_thesis_trained_on_sim.pth"
+        expert_checkpoint = f"{repo_path}/src/models/expert/checkpoints/expert_thesis_trained_on_real.pth"
         graph_interactions_filepath = f"{repo_path}/{files_path}/interactions_18_genes_thesis.txt"
         master_regulators_init = f"{repo_path}/{files_path}/mrs_18_genes.txt"
     elif whoami == 'ionelia.buzatu':
@@ -174,8 +174,8 @@ if __name__ == "__main__":
     NUM_SIM_CELLS = 1
     experiment_buddy.register_defaults(locals())
     writer = experiment_buddy.deploy(
-        host="", wandb_run_name="OC with sim expert 18G",
-        disabled=False, wandb_kwargs={'project': "policy-gradient"}
+        host="", wandb_run_name="no_k_use|OC|with sim expert|18G|steer1",
+        disabled=False, wandb_kwargs={'entity': 'control-grn', 'project': 'OC'}
     )
 
     # dataset_dict = open_datasets_json(return_specific_key='DS4')
@@ -213,6 +213,7 @@ if __name__ == "__main__":
     start = time.time()
     adjacency, graph, layers = sim.build()
     print(f"Compiling the graph took {round(time.time() - start)} secs.")
+    print(f"actions names: {[gene_names[mr] for mr in layers[0]]}")
 
     # fig = plot_heatmap_all_expressions(
     #     ds4_ground_truth_initial_dist.reshape(3, 100, 10000).mean(2).T,
@@ -227,13 +228,14 @@ if __name__ == "__main__":
     if is_debugger_active():
         sim.simulation_num_steps = 5
         with jax.disable_jit():
-            control(sim, 5, dataset.tot_cell_types, len(sim.layers[0]), classifier,
-                    writer=writer,
-                    # add_technical_noise_function=add_technical_noise
-                    )
+            control(
+                sim, 5, len(sim.layers[0]), classifier, writer=writer,
+                # add_technical_noise_function=add_technical_noise
+            )
     else:
         num_episodes = 700
-        control(sim, num_episodes, dataset.tot_cell_types, len(sim.layers[0]), classifier,
-                writer=writer,
-                # add_technical_noise_function=add_technical_noise
-                )
+        control(
+            sim, num_episodes, len(sim.layers[0]), classifier,
+            writer=writer,
+            # add_technical_noise_function=add_technical_noise
+        )
