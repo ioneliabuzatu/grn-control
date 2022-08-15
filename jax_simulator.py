@@ -76,10 +76,14 @@ class Sim:
         """
         :param actions: array containing the values to initialize the controlled nodes.
         :param load_basal_production_from_file: if True reads the file to init nodes values.
-        :param context_bandits: if True will run contextual bandits, RL otherwise.
+        :param context_bandits: if True will run contextual bandits, RL otherwise. For OC set it to True.
         :return: gene expression == nodes values.
         """
+
+        print(f"One rollout of {'Bandits' if context_bandits else 'RL'}.")
+
         if load_basal_production_from_file:
+            print("Loading basal production rates from file...")
             assert os.path.exists(self.regulators_filename)
             basal_production_rates = jnp.array(
                 get_basal_production_rate(
@@ -99,6 +103,10 @@ class Sim:
                         basal_production_rates = jnp.zeros(shape=(self.num_genes, self.num_cell_types))
 
             for idx_action, (action_gene, master_id) in enumerate(zip(actions, self.layers[0])):
+                print("#### idx_action:", idx_action)
+                print("####", action_gene.primal)
+                print("####", master_id)
+                print("####", basal_production_rates[master_id, target_idx])
                 new_gene_expression = basal_production_rates[master_id, target_idx] + jax.nn.relu(action_gene)
                 basal_production_rates = basal_production_rates.at[master_id, target_idx].set(new_gene_expression)
 
@@ -238,7 +246,7 @@ def euler_maruyama_master(curr_genes_expression, basal_production_rate, q, key, 
 
         noise = jnp.multiply(amplitude_p, dw_production) + jnp.multiply(amplitude_d, dw_decay)
 
-        next_gene_conc = curr_concentration + (dt * jnp.subtract(production_rates, decay))  + jnp.power(dt, 0.5) * noise
+        next_gene_conc = curr_concentration + (dt * jnp.subtract(production_rates, decay)) + jnp.power(dt, 0.5) * noise
 
         next_gene_conc = jax.nn.relu(next_gene_conc)
         # next_gene_conc = jax.nn.softplus(next_gene_conc)
@@ -264,7 +272,7 @@ def euler_maruyama_targets(curr_genes_expression, q, production_rates, key, simu
         amplitude_p = q * jnp.power(production_rate_t, 0.5)
         amplitude_d = q * jnp.power(decay, 0.5)
         noise = jnp.multiply(amplitude_p, dw_p_t) + jnp.multiply(amplitude_d, dw_d_t)
-        next_x = curr_x + (dt * jnp.subtract(production_rate_t, decay))  + jnp.power(dt, 0.5) * noise
+        next_x = curr_x + (dt * jnp.subtract(production_rate_t, decay)) + jnp.power(dt, 0.5) * noise
         next_x = jax.nn.relu(next_x)
         # next_x = jax.nn.softplus(next_x)
         return next_x, next_x

@@ -62,7 +62,7 @@ def control(env, num_episodes, num_master_genes, expert, visualise_samples_genes
 
     @jax.jit
     def loss_exp(actions):
-        trajectory = env.run_one_rollout(actions, target_idx=target_class)
+        trajectory = env.run_one_rollout(actions, target_idx=target_class, context_bandits=True)
         trajectory = jnp.stack(tuple([trajectory[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
 
         # if add_technical_noise_function is not None:
@@ -75,7 +75,7 @@ def control(env, num_episodes, num_master_genes, expert, visualise_samples_genes
 
         gain_target_class = jnp.mean(output_classifier[:, target_class])
         penalty_off_target_class = jnp.mean(output_classifier[:, 1 - target_class], axis=0)
-        gain = 1/2 * gain_target_class - penalty_off_target_class
+        gain = 2 * gain_target_class - penalty_off_target_class
         return gain, last_state
 
     def update(episode, opt_state_, check_expressions_for_convergence):
@@ -181,7 +181,7 @@ if __name__ == "__main__":
     NUM_SIM_CELLS = 1
     experiment_buddy.register_defaults(locals())
     writer = experiment_buddy.deploy(
-        host="", wandb_run_name=f"steer{target_class}|6u|18G|expert_real|OC|",
+        host="mila", wandb_run_name=f"###steer{target_class}|6u|18G|expert_real|OC|",
         disabled=False, wandb_kwargs={'entity': 'control-grn', 'project': 'OC'}
     )
 
