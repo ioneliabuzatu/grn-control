@@ -27,7 +27,7 @@ gene_names = {
 }
 
 np.set_printoptions(suppress=True)
-target_class = 0
+target_class = 1
 
 
 def cross_entropy(logprobs, target_to_steer):
@@ -62,7 +62,7 @@ def control(env, num_episodes, num_master_genes, expert, visualise_samples_genes
 
     @jax.jit
     def loss_exp(actions):
-        trajectory = env.run_one_rollout(actions, target_idx=target_class)
+        trajectory = env.run_one_rollout(actions, target_idx=target_class, context_bandits=True)
         trajectory = jnp.stack(tuple([trajectory[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
 
         # if add_technical_noise_function is not None:
@@ -75,7 +75,7 @@ def control(env, num_episodes, num_master_genes, expert, visualise_samples_genes
 
         gain_target_class = jnp.mean(output_classifier[:, target_class])
         penalty_off_target_class = jnp.mean(output_classifier[:, 1 - target_class], axis=0)
-        gain = 1/2 * gain_target_class - penalty_off_target_class
+        gain = 2 * gain_target_class - penalty_off_target_class
         return gain, last_state
 
     def update(episode, opt_state_, check_expressions_for_convergence):
@@ -94,7 +94,8 @@ def control(env, num_episodes, num_master_genes, expert, visualise_samples_genes
     opt_init, opt_update, get_params = optimizers.adam(step_size=0.05)
     # opt_init, opt_update, get_params = optimizers.momentum(step_size=0.005, mass=0.1)
     # opt_init, opt_update, get_params = optimizers.adam(step_size=0.1)
-    a0 = jnp.array(np.random.random(size=(num_master_genes,)))  # MEMO remember initially was also num_cell_types)))
+    a0 = jnp.array(np.random.random(size=num_master_genes))  # MEMO remember initially was also had num_cell_types)))
+    print("Initial actions:", a0)
     opt_state = opt_init(a0)
 
     check_expressions_for_convergence = []
@@ -113,7 +114,6 @@ def control(env, num_episodes, num_master_genes, expert, visualise_samples_genes
 
         if episode % 1 == 0:
             actions = get_params(opt_state)
-            print(f"episode:{episode}|gain:{gain}|target_class_mean_prob|grad.mean()")
 
             plt.figure(figsize=(3.5, 10))
             heatmap_grads = (grad - grad.mean(0)) / grad.std(0)
@@ -181,7 +181,7 @@ if __name__ == "__main__":
     NUM_SIM_CELLS = 1
     experiment_buddy.register_defaults(locals())
     writer = experiment_buddy.deploy(
-        host="", wandb_run_name=f"steer{target_class}|6u|18G|expert_real|OC|",
+        host="", wandb_run_name=f"###steer{target_class}|6u|18G|expert_real|OC|",
         disabled=False, wandb_kwargs={'entity': 'control-grn', 'project': 'OC'}
     )
 
@@ -240,7 +240,7 @@ if __name__ == "__main__":
                 # add_technical_noise_function=add_technical_noise
             )
     else:
-        num_episodes = 700
+        num_episodes = 1000000
         control(
             sim, num_episodes, len(sim.layers[0]), classifier,
             writer=writer,
