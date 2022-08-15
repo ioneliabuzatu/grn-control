@@ -89,7 +89,11 @@ class GRNControlEnvThesis(gym.Env):
     def step(self, actions, wandb_verbose=True):
         # @jax.jit
         def reward_function(_actions):
-            gene_expression = self.sim.run_one_rollout(_actions, target_idx=self.target_cell_type)
+            gene_expression = self.sim.run_one_rollout(
+                _actions,
+                target_idx=self.target_cell_type,
+                context_bandits=not self.run_rl
+            )
             gene_expression = self.dict_to_array(gene_expression)
             x_T = gene_expression[-1, :, :]
 
