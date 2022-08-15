@@ -16,7 +16,6 @@ from src.models.expert.classfier_cell_state import torch_to_jax
 from src.zoo_functions import dataset_namedtuple
 from src.zoo_functions import is_debugger_active
 
-# jax.config.update('jax_platform_name', 'cpu')
 # gene_names_28 = { 0: 'Sox2', 1: 'Obox6', 2: 'Klf4', 3: 'Esrrb',
 # 4: 'Hmx1', 5: 'Myc', 6: 'Pou5f1', 7: 'Elf2', 8: 'Fmnl2', 9: 'Nfkb1', 10: 'Sirt7', 11: 'Rfx3', 12: 'Nr1i3',
 # 13: 'Rfx5', 14: 'Hmg20a', 15: 'Ppp1r13b', 16: 'Polr3e', 17: 'Gmeb2', 18: 'Gmeb1', 19: 'Zfp282', 20: 'Ep300',
@@ -28,7 +27,7 @@ gene_names = {
 }
 
 np.set_printoptions(suppress=True)
-target_class = 1
+target_class = 0
 
 
 def cross_entropy(logprobs, target_to_steer):
@@ -52,15 +51,13 @@ def cross_entropy(logprobs, target_to_steer):
 
 def control(env, num_episodes, num_master_genes, expert, visualise_samples_genes=False,
             writer=None, add_technical_noise_function=None):
-    mean_K = env.adjacency[env.adjacency > 0].mean()
-    print(f"mean Ks: {mean_K:.3f}")
+    ### mean_K = env.adjacency[env.adjacency > 0].mean()
+    ### print(f"mean Ks: {mean_K:.3f}")
 
-    y_axis_labels = [gene_names[gene] for gene in sim.layers[0]]
+    actions_names = [gene_names[gene] for gene in sim.layers[0]]
     heatmap_kwargs = {'linewidth': 5,
-                      'yticklabels': y_axis_labels,
                       'cbar_kws': {"shrink": .7},
                       'square': True, 'cmap': 'viridis',
-                      'xticklabels': ['D0' if target_class == 0 else 'iPSC']
                       }
 
     @jax.jit
@@ -76,7 +73,9 @@ def control(env, num_episodes, num_master_genes, expert, visualise_samples_genes
         last_state = trajectory[-1].T  # cell type is batch
         output_classifier = expert(last_state)
 
-        gain = 2*jnp.mean(output_classifier[:, target_class]) - jnp.mean(output_classifier[:, 1-target_class], axis=0)
+        gain_target_class = jnp.mean(output_classifier[:, target_class])
+        penalty_off_target_class = jnp.mean(output_classifier[:, 1 - target_class], axis=0)
+        gain = 1/2 * gain_target_class - penalty_off_target_class
         return gain, last_state
 
     def update(episode, opt_state_, check_expressions_for_convergence):
@@ -113,13 +112,15 @@ def control(env, num_episodes, num_master_genes, expert, visualise_samples_genes
         offtarget_class_mean_prob = jnp.mean(probs[:, 1 - target_class])
 
         if episode % 1 == 0:
-            actions = get_params(opt_state) * mean_K
-            # logits = last_state
+            actions = get_params(opt_state)
             print(f"episode:{episode}|gain:{gain}|target_class_mean_prob|grad.mean()")
 
             plt.figure(figsize=(3.5, 10))
             heatmap_grads = (grad - grad.mean(0)) / grad.std(0)
-            heatmap_grads = sns.heatmap(heatmap_grads.reshape(1, *heatmap_grads.shape).T, **heatmap_kwargs)
+            heatmap_grads = sns.heatmap(heatmap_grads.reshape(1, *heatmap_grads.shape).T, **heatmap_kwargs,
+                                        xticklabels=['D0' if target_class == 0 else 'iPSC'],
+                                        yticklabels=actions_names
+                                        )
             writer.run.log({"heatmaps/sensitivity_analysis": wandb.Image(heatmap_grads)}, step=episode)
             plt.close()
 
@@ -138,16 +139,19 @@ def control(env, num_episodes, num_master_genes, expert, visualise_samples_genes
             plt.figure(figsize=(3.5, 10))
             heatmap_actions = (actions - actions.mean(0)) / actions.std(0)
             heatmap_actions_reshape = sns.heatmap(heatmap_actions.reshape(1, *heatmap_actions.shape).T,
-                                                  **heatmap_kwargs)
+                                                  **heatmap_kwargs,
+                                                  xticklabels=['D0' if target_class == 0 else 'iPSC'],
+                                                  )
             writer.run.log({"heatmaps/actions": wandb.Image(heatmap_actions_reshape)}, step=episode)
             plt.close()
 
-            # heatmap_gene_expr = sns.heatmap(last_state.T, xticklabels=['D0', 'iPSC'], **heatmap_kwargs)
-            # writer.run.log({"heatmaps/gene_expression": wandb.Image(heatmap_gene_expr)}, step=episode)
-            # plt.close() # TODO uncomment 3 lines above
+            heatmap_gene_expr = sns.heatmap(
+                last_state.T, xticklabels=['D0', 'iPSC'], yticklabels=list(gene_names.values()), **heatmap_kwargs)
+            writer.run.log({"heatmaps/gene_expression": wandb.Image(heatmap_gene_expr)}, step=episode)
+            plt.close()
 
             for idx, _action in enumerate(actions):
-                writer.run.log({f"actions/{y_axis_labels[idx]}": actions[idx]}, step=episode)
+                writer.run.log({f"actions/{actions_names[idx]}": actions[idx]}, step=episode)
 
     print(f"policy gradient simulation control took {round(time.time() - start)} secs.")
 
@@ -159,7 +163,7 @@ if __name__ == "__main__":
     whoami = getpass.getuser()
     home = str(Path.home())
     print("home:", home)
-    if whoami == 'ionelia':
+    if whoami == "ionelia":
         repo_path = f"{home}/projects/grn-control"
         files_path = "/data/GEO/GSE122662/graph-experiments"
         # expert_checkpoint = f"{repo_path}/data/GEO/GSE122662/graph-experiments/expert_28_genes_2_layer.pth"
@@ -168,13 +172,16 @@ if __name__ == "__main__":
         expert_checkpoint = f"{repo_path}/src/models/expert/checkpoints/expert_thesis_trained_on_real.pth"
         graph_interactions_filepath = f"{repo_path}/{files_path}/interactions_18_genes_thesis.txt"
         master_regulators_init = f"{repo_path}/{files_path}/mrs_18_genes.txt"
-    elif whoami == 'ionelia.buzatu':
-        expert_checkpoint = "toto cluster"
+    elif whoami == "ionelia.buzatu":
+        glob_source = "/network/projects/_groups/grn_control/graphD0D18genes#18"
+        expert_checkpoint=f"{glob_source}/expert_thesis_trained_on_real.pth"
+        graph_interactions_filepath = f"{glob_source}/interactions_18_genes_thesis.txt"
+        master_regulators_init = f"{glob_source}/mrs_18_genes.txt"
 
     NUM_SIM_CELLS = 1
     experiment_buddy.register_defaults(locals())
     writer = experiment_buddy.deploy(
-        host="", wandb_run_name="no_k_use|OC|with sim expert|18G|steer1",
+        host="", wandb_run_name=f"steer{target_class}|6u|18G|expert_real|OC|",
         disabled=False, wandb_kwargs={'entity': 'control-grn', 'project': 'OC'}
     )
 
