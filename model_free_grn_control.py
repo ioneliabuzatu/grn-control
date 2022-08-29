@@ -1,20 +1,20 @@
-import os
+import getpass
 
 import experiment_buddy
+
 import gym_gene_control  # noqa
-from src.rl_agents import train_a2c # noqa
-from src.rl_agents import train_ddpg # noqa
-from src.rl_agents import train_ppo # noqa
-from src.rl_agents import train_sac # noqa
-from src.rl_agents import train_td3 # noqa
+from src.rl_agents import train_a2c  # noqa
+from src.rl_agents import train_ddpg  # noqa
+from src.rl_agents import train_ppo  # noqa
+from src.rl_agents import train_sac  # noqa
+from src.rl_agents import train_td3  # noqa
 from src.zoo_functions import open_datasets_json
-import getpass
 
 
 def main():
     whoami = getpass.getuser()
     if whoami == 'ionelia':
-        filepath='data/rl_agents_params.json'
+        filepath = 'data/rl_agents_params.json'
     elif whoami == 'ionelia.buzatu':
         filepath = "/network/projects/_groups/grn_control/graphD0D18genes#18/thesis_rl_agents_params.json"
 
