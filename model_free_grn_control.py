@@ -22,7 +22,9 @@ def main():
     json_params = open_datasets_json(filepath=filepath)
     generals_params = json_params['generals']
 
-    agent_to_train = [train_a2c, train_td3, train_sac, train_ppo, train_ddpg]
+    # agent_to_train = [train_a2c, train_td3, train_sac, train_ppo, train_ddpg]
+    # agent_to_train = [train_ppo, train_ddpg]
+    agent_to_train = [train_ppo]
 
     config = {
         "policy_type": "MlpPolicy",
