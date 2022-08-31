@@ -23,8 +23,7 @@ def main():
     generals_params = json_params['generals']
 
     # agent_to_train = [train_a2c, train_td3, train_sac, train_ppo, train_ddpg]
-    # agent_to_train = [train_ppo, train_ddpg]
-    agent_to_train = [train_ppo]
+    agent_to_train = [train_ddpg]
 
     config = {
         "policy_type": "MlpPolicy",
