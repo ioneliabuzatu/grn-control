@@ -27,7 +27,7 @@ gene_names = {
 }
 
 np.set_printoptions(suppress=True)
-target_class = 1
+target_class = 0
 
 
 def cross_entropy(logprobs, target_to_steer):
@@ -62,7 +62,7 @@ def control(env, num_episodes, num_master_genes, expert, visualise_samples_genes
 
     @jax.jit
     def loss_exp(actions):
-        trajectory = env.run_one_rollout(actions, target_idx=target_class, context_bandits=True)
+        trajectory = env.run_one_rollout(actions, target_idx=target_class, use_rl=False)
         trajectory = jnp.stack(tuple([trajectory[gene] for gene in range(env.num_genes)])).swapaxes(0, 1)
 
         # if add_technical_noise_function is not None:
@@ -140,7 +140,7 @@ def control(env, num_episodes, num_master_genes, expert, visualise_samples_genes
             heatmap_actions = (actions - actions.mean(0)) / actions.std(0)
             heatmap_actions_reshape = sns.heatmap(heatmap_actions.reshape(1, *heatmap_actions.shape).T,
                                                   **heatmap_kwargs,
-                                                  xticklabels=['D0' if target_class == 0 else 'iPSC'],
+                                                  # xticklabels=['D0' if target_class == 0 else 'iPSC'],
                                                   )
             writer.run.log({"heatmaps/actions": wandb.Image(heatmap_actions_reshape)}, step=episode)
             plt.close()
@@ -150,8 +150,8 @@ def control(env, num_episodes, num_master_genes, expert, visualise_samples_genes
             writer.run.log({"heatmaps/gene_expression": wandb.Image(heatmap_gene_expr)}, step=episode)
             plt.close()
 
-            for idx, _action in enumerate(actions):
-                writer.run.log({f"actions/{actions_names[idx]}": actions[idx]}, step=episode)
+            # for idx, _action in enumerate(actions):
+            #     writer.run.log({f"actions/{actions_names[idx]}": actions[idx]}, step=episode)
 
     print(f"policy gradient simulation control took {round(time.time() - start)} secs.")
 
@@ -236,13 +236,15 @@ if __name__ == "__main__":
         sim.simulation_num_steps = 5
         with jax.disable_jit():
             control(
-                sim, 5, len(sim.layers[0]), classifier, writer=writer,
+                # sim, 5, len(sim.layers[0]), classifier, writer=writer,
+                sim, 5, len(sim.adjacency), classifier, writer=writer,
                 # add_technical_noise_function=add_technical_noise
             )
     else:
         num_episodes = 1000000
         control(
-            sim, num_episodes, len(sim.layers[0]), classifier,
+            # sim, num_episodes, len(sim.layers[0]), classifier,
+            sim, num_episodes, len(sim.adjacency), classifier,
             writer=writer,
             # add_technical_noise_function=add_technical_noise
         )
