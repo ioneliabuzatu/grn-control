@@ -72,7 +72,7 @@ class Sim:
         self.layers = topo_sort_graph_layers(graph)
         return adjacency, graph, self.layers
 
-    def run_one_rollout(self, actions=None, load_basal_production_from_file=True, context_bandits=False, target_idx=0):
+    def run_one_rollout(self, actions=None, load_basal_production_from_file=True, use_rl=False, target_idx=0):
         """
         :param actions: array containing the values to initialize the controlled nodes.
         :param load_basal_production_from_file: if True reads the file to init nodes values.
@@ -80,7 +80,7 @@ class Sim:
         :return: gene expression == nodes values.
         """
 
-        print(f"One rollout of {'Bandits' if context_bandits else 'RL'}.")
+        print(f"One rollout of {'Bandits/OC' if not use_rl else 'RL'}.")
 
         if load_basal_production_from_file:
             print("Loading basal production rates from file...")
@@ -92,21 +92,22 @@ class Sim:
                     self.num_cell_types)
             )
         if actions is not None:
-            if context_bandits and not load_basal_production_from_file:
-                basal_production_rates = jnp.zeros(shape=(self.num_genes, self.num_cell_types))
+            if not use_rl and not load_basal_production_from_file:
+                    basal_production_rates = jnp.zeros(shape=(self.num_genes, self.num_cell_types))
 
-            if not context_bandits:
+            if use_rl:
                 try:
                     basal_production_rates = self.previous_t
                 except AttributeError:
                     if not load_basal_production_from_file:
                         basal_production_rates = jnp.zeros(shape=(self.num_genes, self.num_cell_types))
 
-            for idx_action, (action_gene, master_id) in enumerate(zip(actions, self.layers[0])):
+            for idx_action, (action_gene, master_id) in enumerate(zip(actions, self.layers[0])): # TODO for controlling all nodes switch fix here
+            # for idx_action, (action_gene, master_id) in enumerate(zip(actions, [i for l in self.layers for i in l])):
                 new_gene_expression = basal_production_rates[master_id, target_idx] + jax.nn.relu(action_gene)
                 basal_production_rates = basal_production_rates.at[master_id, target_idx].set(new_gene_expression)
 
-        if not context_bandits:
+        if use_rl:
             if not hasattr(self, 'previous_t'):
                 self.previous_t = basal_production_rates
 
