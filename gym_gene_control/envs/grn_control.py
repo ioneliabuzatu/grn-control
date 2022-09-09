@@ -92,7 +92,7 @@ class GRNControlEnvThesis(gym.Env):
             gene_expression = self.sim.run_one_rollout(
                 _actions,
                 target_idx=self.target_cell_type,
-                context_bandits=not self.run_rl
+                use_rl=self.run_rl
             )
             gene_expression = self.dict_to_array(gene_expression)
             x_T = gene_expression[-1, :, :]
@@ -168,8 +168,9 @@ class GRNControlEnvThesis(gym.Env):
         self.count_resets += 1
         if self.initial_state is None:
             actions = np.random.random(self.action_space.shape)
-            trajectory = self.dict_to_array(self.sim.run_one_rollout(actions, target_idx=self.target_cell_type))
-            last_time_step_of_sim_trajectory = trajectory[-1, :, :]
+            trajectory = self.sim.run_one_rollout(actions, target_idx=self.target_cell_type, use_rl=self.run_rl)
+            trajectory_to_arr = self.dict_to_array(trajectory)
+            last_time_step_of_sim_trajectory = trajectory_to_arr[-1, :, :]
             self.initial_state = last_time_step_of_sim_trajectory
         return self.initial_state
 
