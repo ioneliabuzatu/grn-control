@@ -1,3 +1,4 @@
+# TODO adapt it for u=partial and u=tot_nodes_in_graph
 import time
 
 import experiment_buddy
@@ -54,7 +55,8 @@ def control(env, num_episodes, num_master_genes, expert, visualise_samples_genes
     ### mean_K = env.adjacency[env.adjacency > 0].mean()
     ### print(f"mean Ks: {mean_K:.3f}")
 
-    actions_names = [gene_names[gene] for gene in sim.layers[0]]
+    # actions_names = [gene_names[gene] for gene in sim.layers[0]] # TODO use this if control only top genes
+    actions_names = [gene_names[gene] for l in sim.layers for gene in l]
     heatmap_kwargs = {'linewidth': 5,
                       'cbar_kws': {"shrink": .7},
                       'square': True, 'cmap': 'viridis',
@@ -150,8 +152,8 @@ def control(env, num_episodes, num_master_genes, expert, visualise_samples_genes
             writer.run.log({"heatmaps/gene_expression": wandb.Image(heatmap_gene_expr)}, step=episode)
             plt.close()
 
-            # for idx, _action in enumerate(actions):
-            #     writer.run.log({f"actions/{actions_names[idx]}": actions[idx]}, step=episode)
+            for idx, _action in enumerate(actions):
+                writer.run.log({f"actions/{actions_names[idx]}": actions[idx]}, step=episode)
 
     print(f"policy gradient simulation control took {round(time.time() - start)} secs.")
 
@@ -181,7 +183,7 @@ if __name__ == "__main__":
     NUM_SIM_CELLS = 1
     experiment_buddy.register_defaults(locals())
     writer = experiment_buddy.deploy(
-        host="", wandb_run_name=f"###steer{target_class}|6u|18G|expert_real|OC|",
+        host="", wandb_run_name=f"###steer{target_class}|18u|18G|expert_real|OC|",
         disabled=False, wandb_kwargs={'entity': 'control-grn', 'project': 'OC'}
     )
 
