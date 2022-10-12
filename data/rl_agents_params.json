@@ -123,6 +123,6 @@
     "interactions_glob_filepath":"/home/ionelia/projects/grn-control/data/GEO/GSE122662/graph-experiments/interactions_18_genes_thesis.txt",
     "regulators_glob_filepath":"/home/ionelia/projects/grn-control/data/GEO/GSE122662/graph-experiments/mrs_18_genes.txt",
     "expert_checkpoint_glob_filepath":"/home/ionelia/projects/grn-control/src/models/expert/checkpoints/expert_thesis_trained_on_real.pth",
-    "host": "mila"
+    "host": ""
   }
 }

@@ -102,9 +102,10 @@ class Sim:
                     if not load_basal_production_from_file:
                         basal_production_rates = jnp.zeros(shape=(self.num_genes, self.num_cell_types))
 
-            for idx_action, (action_gene, master_id) in enumerate(zip(actions, self.layers[0])): # TODO for controlling all nodes switch fix here
-            # for idx_action, (action_gene, master_id) in enumerate(zip(actions, [i for l in self.layers for i in l])):
-                new_gene_expression = basal_production_rates[master_id, target_idx] + jax.nn.relu(action_gene)
+            # for idx_action, (action_gene, master_id) in enumerate(zip(actions, self.layers[0])): # TODO for controlling all nodes switch fix here
+            for idx_action, (action_gene, master_id) in enumerate(zip(actions, [i for l in self.layers for i in l])):
+                # new_gene_expression = basal_production_rates[master_id, target_idx] + jax.nn.relu(action_gene)
+                new_gene_expression = basal_production_rates[master_id, target_idx] * jax.nn.relu(action_gene)
                 basal_production_rates = basal_production_rates.at[master_id, target_idx].set(new_gene_expression)
 
         if use_rl:
